@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS games (
+    id SERIAL PRIMARY KEY,
+    game_id BIGINT UNIQUE NOT NULL,
+    multiplier NUMERIC(10, 2) NOT NULL,
+    hash TEXT NOT NULL,
+    crashed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_games_game_id ON games(game_id);
+CREATE INDEX IF NOT EXISTS idx_games_created_at ON games(created_at);
