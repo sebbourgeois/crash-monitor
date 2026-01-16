@@ -65,7 +65,8 @@ The backend requires a runtime environment that supports Headless Chrome (Puppet
 
 **Option A: VPS (DigitalOcean, EC2, etc.)**
 1.  Clone repo.
-2.  Install Chrome dependencies (libraries for Puppeteer).
+2.  **Install Chrome dependencies**:
+    Run the `apt-get` command listed in the **[Linux / VM / VPS Deployment](#linux--vm--vps-deployment)** section below to install the required libraries.
 3.  Run `node server.js` (suggest using `pm2` for process management).
 
 **Option B: Platform as a Service (Render, Heroku)**
