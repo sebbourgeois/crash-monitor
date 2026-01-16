@@ -1,0 +1,30 @@
+{
+  "name": "stake-crash-archives",
+  "version": "1.0.0",
+  "description": "",
+  "main": "test-ws.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sebbourgeois/stake-crash-archives.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sebbourgeois/stake-crash-archives/issues"
+  },
+  "homepage": "https://github.com/sebbourgeois/stake-crash-archives#readme",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
+    "eventsource": "^4.1.0",
+    "express": "^5.2.1",
+    "puppeteer": "^24.35.0",
+    "socket.io": "^4.8.3",
+    "ws": "^8.19.0"
+  }
+}

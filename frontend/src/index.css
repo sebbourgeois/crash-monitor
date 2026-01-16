@@ -1,0 +1,126 @@
+:root {
+  --bg-color: #0f212e;
+  --card-bg: #1a2c38;
+  --text-primary: #ffffff;
+  --text-secondary: #b1bad3;
+  --accent-green: #00e701;
+  --accent-red: #ff4d4d;
+  --accent-amber: #fca5a5; /* Simplified amber/crash */
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  max-width: 1200px;
+  padding: 20px;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* History Bar */
+.history-bar {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 10px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--card-bg) var(--bg-color);
+}
+
+.history-item {
+  background-color: var(--card-bg);
+  padding: 5px 12px;
+  border-radius: 15px;
+  font-weight: bold;
+  font-size: 0.9em;
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: center;
+}
+
+.history-item.green { color: var(--accent-green); }
+.history-item.red { color: var(--accent-red); }
+
+/* Game Area */
+.game-area {
+  background-color: var(--card-bg);
+  border-radius: 10px;
+  height: 400px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.multiplier-display {
+  font-size: 5em;
+  font-weight: 800;
+  position: relative;
+  z-index: 2;
+}
+
+.multiplier-display.crashed {
+  color: var(--accent-red);
+}
+
+.multiplier-display.live {
+  color: var(--text-primary);
+}
+
+.status-text {
+  font-size: 1.2em;
+  color: var(--text-secondary);
+  margin-top: 10px;
+}
+
+/* Canvas/Graph (Simplified as bg for now) */
+.graph-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  opacity: 0.2;
+}
+
+/* Stats/Debug */
+.stats-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.stat-card {
+  background-color: var(--card-bg);
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.stat-title {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  margin-bottom: 5px;
+}
+
+.stat-value {
+  font-size: 1.2em;
+  font-weight: bold;
+}
