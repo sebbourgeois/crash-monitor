@@ -82,3 +82,25 @@ The `server.js` is configured to run on specific ports. For deployment, ensure y
 ## Troubleshooting
 - **No Data?** The backend waits 15 seconds for real data. If blocked by Cloudflare, it switches to Mock Mode. Check the terminal for "Mock: Game Starting" logs.
 - **Port Conflicts?** Ensure ports 3005 and 5173 are free.
+
+### Linux / VM / VPS Deployment
+If encountering `Puppeteer/Browser Error: Could not find Chrome` or `Permission denied`:
+
+1.  **Fix Permissions**:
+    The `puppeteer` binary might lack execute permissions. Run:
+    ```bash
+    chmod +x node_modules/.bin/puppeteer
+    ```
+
+2.  **Install Chrome Manually**:
+    After fixing permissions, run:
+    ```bash
+    npx puppeteer browsers install chrome
+    ```
+
+3.  **Install System Dependencies**:
+    Linux VMs often lack libraries required by Chrome. Install them:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y ca-certificates fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 libgcc1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 lsb-release wget xdg-utils
+    ```
