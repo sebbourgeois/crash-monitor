@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stake Crash Monitor</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>STAKE CRASH MONITOR</h1>
+      <div id="status" class="status disconnected">disconnected</div>
+    </header>
+
+    <section class="live-section">
+      <div class="live-display" id="live-display">
+        <div class="live-status" id="live-status">WAITING</div>
+        <div class="live-multiplier" id="live-multiplier">1.00x</div>
+      </div>
+    </section>
+
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">AVERAGE</div>
+        <div class="stat-value" id="stat-average">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">MEDIAN</div>
+        <div class="stat-value" id="stat-median">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">GAMES</div>
+        <div class="stat-value" id="stat-games">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">MIN</div>
+        <div class="stat-value" id="stat-min">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">MAX</div>
+        <div class="stat-value" id="stat-max">--</div>
+      </div>
+    </section>
+
+    <section class="streak-grid">
+      <div class="stat-card streak">
+        <div class="stat-label">SINCE &lt;1.01x</div>
+        <div class="stat-value" id="stat-since1x">--</div>
+      </div>
+      <div class="stat-card streak">
+        <div class="stat-label">SINCE 1000x+</div>
+        <div class="stat-value" id="stat-since1000x">--</div>
+      </div>
+    </section>
+
+    <section class="chart-section">
+      <h2>DISTRIBUTION</h2>
+      <div class="chart-container">
+        <canvas id="distributionChart"></canvas>
+      </div>
+    </section>
+
+    <section class="results-section">
+      <h2>RECENT RESULTS</h2>
+      <div id="results-grid" class="results-grid">
+        <!-- Pills will be dynamically inserted here -->
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
