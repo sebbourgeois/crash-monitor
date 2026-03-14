@@ -1,317 +1,243 @@
-// State
-let results = [];
-let chart = null;
-
-// Live game state
-let liveGame = {
-  status: 'waiting',
-  gameId: null
+// State Management
+const State = {
+  results: [],
+  chart: null,
+  isAudioEnabled: false,
+  liveGame: { status: 'waiting', multiplier: 1.00, gameId: null },
+  colors: {
+    red: '#f6465d',
+    orange: '#ff9f43',
+    green: '#0ecb81',
+    purple: '#a855f7',
+    turquoise: '#00d2d3'
+  }
 };
 
-// DOM elements
-const statusEl = document.getElementById('status');
-const resultsGrid = document.getElementById('results-grid');
-const statAverage = document.getElementById('stat-average');
-const statMedian = document.getElementById('stat-median');
-const statGames = document.getElementById('stat-games');
-const statMin = document.getElementById('stat-min');
-const statMax = document.getElementById('stat-max');
-const statSince1x = document.getElementById('stat-since1x');
-const statSince1000x = document.getElementById('stat-since1000x');
-const statSinceDouble1x = document.getElementById('stat-since-double1x');
-const liveDisplay = document.getElementById('live-display');
-const liveStatus = document.getElementById('live-status');
-const liveMultiplier = document.getElementById('live-multiplier');
+// DOM Elements
+const Elements = {
+  status: document.getElementById('status'),
+  resultsGrid: document.getElementById('results-grid'),
+  statAverage: document.getElementById('stat-average'),
+  statMedian: document.getElementById('stat-median'),
+  statGames: document.getElementById('stat-games'),
+  statMin: document.getElementById('stat-min'),
+  statMax: document.getElementById('stat-max'),
+  statSince1x: document.getElementById('stat-since1x'),
+  statSince1000x: document.getElementById('stat-since1000x'),
+  statSinceDouble1x: document.getElementById('stat-since-double1x'),
+  liveDisplay: document.getElementById('live-display'),
+  liveStatus: document.getElementById('live-status'),
+  liveMultiplier: document.getElementById('live-multiplier'),
+  audioToggle: document.getElementById('audio-toggle')
+};
 
-// WebSocket connection
+// WebSocket Logic
 let ws = null;
-let reconnectTimeout = null;
+let reconnectInterval = 3000;
 
 function connect() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}`;
-
-  ws = new WebSocket(wsUrl);
+  ws = new WebSocket(`${protocol}//${window.location.host}`);
 
   ws.onopen = () => {
-    console.log('WebSocket connected');
-    statusEl.textContent = 'connected';
-    statusEl.className = 'status connected';
+    Elements.status.textContent = 'Connected';
+    Elements.status.className = 'status connected';
   };
 
   ws.onclose = () => {
-    console.log('WebSocket disconnected');
-    statusEl.textContent = 'disconnected';
-    statusEl.className = 'status disconnected';
-
-    // Reconnect after 3 seconds
-    reconnectTimeout = setTimeout(connect, 3000);
-  };
-
-  ws.onerror = (err) => {
-    console.error('WebSocket error:', err);
+    Elements.status.textContent = 'Disconnected';
+    Elements.status.className = 'status disconnected';
+    setTimeout(connect, reconnectInterval);
   };
 
   ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-
-      if (data.type === 'history') {
-        // Initial history load
-        results = data.results;
+    const data = JSON.parse(event.data);
+    switch (data.type) {
+      case 'history':
+        State.results = data.results;
         renderAll();
-      } else if (data.type === 'result') {
-        // New result
-        results.unshift(data.result);
-        // Keep only last 500 results in memory
-        if (results.length > 500) {
-          results = results.slice(0, 500);
-        }
-        addNewPill(data.result);
-        updateStats();
-        updateChart();
-      } else if (data.type === 'live') {
-        // Live game state update
+        break;
+      case 'result':
+        handleNewResult(data.result);
+        break;
+      case 'live':
         updateLiveDisplay(data.state);
-      }
-    } catch (e) {
-      console.error('Failed to parse message:', e);
+        break;
     }
   };
 }
 
-// Update live display with current game state from Stake
-function updateLiveDisplay(state) {
-  const { status, multiplier, gameId } = state;
+function handleNewResult(result) {
+  State.results.unshift(result);
+  if (State.results.length > 500) State.results.pop();
+  
+  addNewPill(result);
+  updateStats();
+  updateChart();
+  
+  if (State.isAudioEnabled) playAlert(result.multiplier);
+}
 
-  // Update status text based on Stake's statuses
-  const statusText = {
-    'in_progress': 'IN PROGRESS',
-    'starting': 'PLACE BETS',
-    'start': 'STARTING...',
+// UI Rendering Helpers
+function getColorClass(m) {
+  if (m < 1.01) return 'red';
+  if (m < 2) return 'orange';
+  if (m < 100) return 'green';
+  if (m < 1000) return 'purple';
+  return 'turquoise';
+}
+
+function formatMultiplier(m) {
+  return m >= 1000 ? m.toFixed(0) + 'x' : m.toFixed(2) + 'x';
+}
+
+function updateLiveDisplay(state) {
+  const { status, multiplier } = state;
+  const statusLabels = {
+    'in_progress': 'CRASHING...',
+    'starting': 'PREPARING',
+    'start': 'STARTING',
     'crash': 'CRASHED',
     'pending': 'WAITING'
   };
-  liveStatus.textContent = statusText[status] || status.toUpperCase();
 
-  // Update multiplier display directly from Stake's data
-  liveMultiplier.textContent = formatMultiplier(multiplier);
-
-  // Update display styling based on status
-  liveDisplay.className = 'live-display';
-
+  Elements.liveStatus.textContent = statusLabels[status] || status.toUpperCase();
+  Elements.liveMultiplier.textContent = formatMultiplier(multiplier);
+  
+  const currentStatus = Elements.liveDisplay.classList.contains(status);
+  Elements.liveDisplay.className = `live-display ${status}`;
+  
+  // Apply crash impact effect if transitioning to crash
+  if (status === 'crash' && !currentStatus) {
+    Elements.liveDisplay.classList.add('crash-impact');
+    setTimeout(() => Elements.liveDisplay.classList.remove('crash-impact'), 500);
+  }
+  
   if (status === 'in_progress') {
-    liveDisplay.classList.add('progress');
-    // Add tier colors based on multiplier
-    if (multiplier >= 1000) {
-      liveDisplay.classList.add('tier-turquoise');
-    } else if (multiplier >= 100) {
-      liveDisplay.classList.add('tier-purple');
-    } else if (multiplier >= 2) {
-      liveDisplay.classList.add('tier-green');
+    const tier = getColorClass(multiplier);
+    if (tier === 'purple' || tier === 'turquoise') {
+      Elements.liveDisplay.classList.add(`tier-${tier}`);
     }
-  } else if (status === 'crash') {
-    liveDisplay.classList.add('crashed');
-  } else if (status === 'starting' || status === 'start') {
-    liveDisplay.classList.add('betting');
   }
-
-  liveGame.status = status;
-  liveGame.gameId = gameId;
 }
 
-// Get color class for multiplier
-function getColorClass(multiplier) {
-  if (multiplier < 1.01) return 'red';      // 1.0x instant crash
-  if (multiplier < 2) return 'orange';       // 1.01x - 1.99x
-  if (multiplier < 100) return 'green';      // 2.0x - 99.99x
-  if (multiplier < 1000) return 'purple';    // 100x - 999.99x
-  return 'turquoise';                         // 1000x+ moon shots
-}
-
-// Format multiplier for display
-function formatMultiplier(multiplier) {
-  if (multiplier >= 1000) {
-    return multiplier.toFixed(0) + 'x';
-  }
-  return multiplier.toFixed(2) + 'x';
-}
-
-// Create a pill element
-function createPill(result, isNew = false) {
-  const pill = document.createElement('div');
-  pill.className = `pill ${getColorClass(result.multiplier)}${isNew ? ' new' : ''}`;
-  pill.textContent = formatMultiplier(result.multiplier);
-  pill.title = `Game: ${result.gameId}\nTime: ${new Date(result.timestamp).toLocaleString()}`;
-  return pill;
-}
-
-// Add a new pill at the beginning
 function addNewPill(result) {
-  const pill = createPill(result, true);
-  resultsGrid.insertBefore(pill, resultsGrid.firstChild);
-
-  // Remove excess pills (keep max 200 in DOM)
-  while (resultsGrid.children.length > 200) {
-    resultsGrid.removeChild(resultsGrid.lastChild);
+  const pill = document.createElement('div');
+  pill.className = `pill ${getColorClass(result.multiplier)} new`;
+  pill.textContent = formatMultiplier(result.multiplier);
+  pill.title = `Game: ${result.gameId}\n${new Date(result.timestamp).toLocaleString()}`;
+  
+  Elements.resultsGrid.insertBefore(pill, Elements.resultsGrid.firstChild);
+  if (Elements.resultsGrid.children.length > 200) {
+    Elements.resultsGrid.removeChild(Elements.resultsGrid.lastChild);
   }
 }
 
-// Render all results
-function renderResults() {
-  resultsGrid.innerHTML = '';
-  const displayResults = results.slice(0, 200);
-  displayResults.forEach(result => {
-    resultsGrid.appendChild(createPill(result));
-  });
-}
-
-// Calculate statistics
-function calculateStats() {
-  if (results.length === 0) {
-    return {
-      average: null,
-      median: null,
-      min: null,
-      max: null,
-      count: 0,
-      since1x: null,
-      since1000x: null,
-      distribution: { red: 0, orange: 0, green: 0, purple: 0, turquoise: 0 }
-    };
-  }
-
-  const multipliers = results.map(r => r.multiplier);
-  const sorted = [...multipliers].sort((a, b) => a - b);
-
-  const sum = multipliers.reduce((a, b) => a + b, 0);
-  const average = sum / multipliers.length;
-
-  const mid = Math.floor(sorted.length / 2);
-  const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-
-  // Distribution buckets
-  const distribution = { red: 0, orange: 0, green: 0, purple: 0, turquoise: 0 };
-  multipliers.forEach(m => {
-    if (m < 1.01) distribution.red++;
-    else if (m < 2) distribution.orange++;
-    else if (m < 100) distribution.green++;
-    else if (m < 1000) distribution.purple++;
-    else distribution.turquoise++;
-  });
-
-  // Get streak counters from latest result
-  const latest = results[0];
-
-  return {
-    average,
-    median,
-    min: sorted[0],
-    max: sorted[sorted.length - 1],
-    count: results.length,
-    since1x: latest?.gamesSinceLast1x ?? null,
-    since1000x: latest?.gamesSinceLast1000x ?? null,
-    sinceDouble1x: latest?.gamesSinceDouble1x ?? null,
-    distribution
-  };
-}
-
-// Update stats display
 function updateStats() {
-  const stats = calculateStats();
+  if (State.results.length === 0) return;
 
-  statGames.textContent = stats.count.toLocaleString();
-  statAverage.textContent = stats.average !== null ? stats.average.toFixed(2) + 'x' : '--';
-  statMedian.textContent = stats.median !== null ? stats.median.toFixed(2) + 'x' : '--';
-  statMin.textContent = stats.min !== null ? stats.min.toFixed(2) + 'x' : '--';
-  statMax.textContent = stats.max !== null ? formatMultiplier(stats.max) : '--';
-  statSince1x.textContent = stats.since1x !== null ? stats.since1x : '--';
-  statSince1000x.textContent = stats.since1000x !== null ? stats.since1000x : '--';
-  statSinceDouble1x.textContent = stats.sinceDouble1x !== null ? stats.sinceDouble1x : '--';
+  const multipliers = State.results.map(r => r.multiplier);
+  const sorted = [...multipliers].sort((a, b) => a - b);
+  const avg = multipliers.reduce((a, b) => a + b, 0) / multipliers.length;
+  const median = sorted[Math.floor(sorted.length / 2)];
+  
+  Elements.statGames.textContent = State.results.length.toLocaleString();
+  Elements.statAverage.textContent = avg.toFixed(2) + 'x';
+  Elements.statMedian.textContent = median.toFixed(2) + 'x';
+  Elements.statMin.textContent = sorted[0].toFixed(2) + 'x';
+  Elements.statMax.textContent = formatMultiplier(sorted[sorted.length - 1]);
+
+  const latest = State.results[0];
+  Elements.statSince1x.textContent = latest.gamesSinceLast1x;
+  Elements.statSince1000x.textContent = latest.gamesSinceLast1000x;
+  Elements.statSinceDouble1x.textContent = latest.gamesSinceDouble1x;
 }
 
-// Initialize or update chart
 function updateChart() {
-  const stats = calculateStats();
-  const dist = stats.distribution;
+  const dist = { red: 0, orange: 0, green: 0, purple: 0, turquoise: 0 };
+  State.results.forEach(r => dist[getColorClass(r.multiplier)]++);
 
-  const data = {
-    labels: ['1.0x', '1.01-1.99x', '2-99x', '100-999x', '1000x+'],
-    datasets: [{
-      data: [dist.red, dist.orange, dist.green, dist.purple, dist.turquoise],
-      backgroundColor: [
-        'rgba(255, 71, 87, 0.7)',
-        'rgba(255, 165, 2, 0.7)',
-        'rgba(46, 213, 115, 0.7)',
-        'rgba(168, 85, 247, 0.7)',
-        'rgba(0, 210, 211, 0.7)'
-      ],
-      borderColor: [
-        '#ff4757',
-        '#ffa502',
-        '#2ed573',
-        '#a855f7',
-        '#00d2d3'
-      ],
-      borderWidth: 1
-    }]
-  };
-
-  if (chart) {
-    chart.data = data;
-    chart.update('none');
+  const data = [dist.red, dist.orange, dist.green, dist.purple, dist.turquoise];
+  
+  if (State.chart) {
+    State.chart.data.datasets[0].data = data;
+    State.chart.update('none');
   } else {
     const ctx = document.getElementById('distributionChart').getContext('2d');
-    chart = new Chart(ctx, {
+    State.chart = new Chart(ctx, {
       type: 'bar',
-      data,
+      data: {
+        labels: ['1.00x', '1.01-1.99', '2-99', '100-999', '1000x+'],
+        datasets: [{
+          data,
+          backgroundColor: Object.values(State.colors).map(c => c + '44'),
+          borderColor: Object.values(State.colors),
+          borderWidth: 2,
+          borderRadius: 4
+        }]
+      },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            display: false
-          },
-          tooltip: {
-            callbacks: {
-              label: (context) => {
-                const total = stats.count;
-                const value = context.raw;
-                const percent = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                return `${value} games (${percent}%)`;
-              }
-            }
-          }
-        },
+        plugins: { legend: { display: false } },
         scales: {
-          x: {
-            grid: {
-              color: 'rgba(255, 255, 255, 0.1)'
-            },
-            ticks: {
-              color: '#888'
-            }
-          },
-          y: {
-            grid: {
-              color: 'rgba(255, 255, 255, 0.1)'
-            },
-            ticks: {
-              color: '#888'
-            }
-          }
+          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#929aa5' } },
+          x: { grid: { display: false }, ticks: { color: '#929aa5' } }
         }
       }
     });
   }
 }
 
-// Render everything
 function renderAll() {
-  renderResults();
+  Elements.resultsGrid.innerHTML = '';
+  State.results.slice(0, 200).forEach(r => {
+    const pill = document.createElement('div');
+    pill.className = `pill ${getColorClass(r.multiplier)}`;
+    pill.textContent = formatMultiplier(r.multiplier);
+    Elements.resultsGrid.appendChild(pill);
+  });
   updateStats();
   updateChart();
 }
 
-// Start connection
+// Audio Alerts
+function playAlert(multiplier) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  if (multiplier < 1.01) {
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(150, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.5);
+  } else if (multiplier >= 1000) {
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 1);
+  } else if (multiplier >= 100) {
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(440, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.3);
+  } else {
+    return; // No sound for normal results
+  }
+
+  gain.gain.setValueAtTime(0.1, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+  osc.start();
+  osc.stop(ctx.currentTime + 1);
+}
+
+// Event Listeners
+Elements.audioToggle.onclick = () => {
+  State.isAudioEnabled = !State.isAudioEnabled;
+  Elements.audioToggle.classList.toggle('active', State.isAudioEnabled);
+};
+
+// Init
 connect();

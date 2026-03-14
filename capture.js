@@ -5,12 +5,17 @@ const path = require('path');
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const notifier = require('node-notifier');
 
 const STAKE_CRASH_URL = 'https://stake.com/casino/games/crash';
 const OUTPUT_FILE = 'crash_results.jsonl';
 const PORT = process.env.PORT || 3000;
 
+// Feature Toggles
+const DASHBOARD_ENABLED = process.env.DASHBOARD_ENABLED !== 'false';
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
+const DESKTOP_NOTIFICATIONS_ENABLED = process.env.DESKTOP_NOTIFICATIONS_ENABLED === 'true';
+
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
@@ -21,41 +26,65 @@ let gamesSinceDouble1x = 0;
 let lastWas1x = false;
 let currentGameState = { status: 'waiting', multiplier: 1.00, gameId: null };
 
-async function sendTelegram(message) {
-  if (!TELEGRAM_ENABLED) return;
+// Multi-channel notification helper
+async function notify(title, message, isCritical = false) {
+  const plainText = message.replace(/<[^>]*>?/gm, ''); // Strip HTML for desktop/logs
+  
+  // 1. Console
+  console.log(`\n[NOTIFY] ${title}: ${plainText}`);
 
-  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-  try {
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text: message,
-        parse_mode: 'HTML'
-      })
+  // 2. Telegram
+  if (TELEGRAM_ENABLED && isCritical) {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    try {
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          text: `<b>${title}</b>\n${message}`,
+          parse_mode: 'HTML'
+        })
+      });
+    } catch (err) {
+      console.error('Telegram error:', err.message);
+    }
+  }
+
+  // 3. Desktop
+  if (DESKTOP_NOTIFICATIONS_ENABLED) {
+    notifier.notify({
+      title: title,
+      message: plainText,
+      sound: true,
+      wait: false
     });
-  } catch (err) {
-    console.error('Telegram error:', err.message);
   }
 }
 
-// Read last N results from JSONL file
+// Efficiently read last N results from JSONL file
 function readHistory(count = 100) {
   try {
     if (!fs.existsSync(OUTPUT_FILE)) return [];
 
-    const content = fs.readFileSync(OUTPUT_FILE, 'utf8');
+    const stats = fs.statSync(OUTPUT_FILE);
+    const bufferSize = Math.min(stats.size, 1024 * 100); // Read last 100KB max
+    const buffer = Buffer.alloc(bufferSize);
+    
+    const fd = fs.openSync(OUTPUT_FILE, 'r');
+    fs.readSync(fd, buffer, 0, bufferSize, stats.size - bufferSize);
+    fs.closeSync(fd);
+
+    const content = buffer.toString('utf8');
     const lines = content.trim().split('\n').filter(line => line);
+    
+    // If the first line might be partial (because we cut off at 100KB), discard it
+    if (stats.size > bufferSize) lines.shift();
+
     const results = lines.map(line => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return null;
-      }
+      try { return JSON.parse(line); } catch { return null; }
     }).filter(Boolean);
 
-    // Return last N results, newest first
     return results.slice(-count).reverse();
   } catch (err) {
     console.error('Error reading history:', err.message);
@@ -63,67 +92,58 @@ function readHistory(count = 100) {
   }
 }
 
-// Broadcast to all connected WebSocket clients
 function broadcast(data) {
   const message = JSON.stringify(data);
   wsClients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
+    if (client.readyState === WebSocket.OPEN) client.send(message);
   });
 }
 
-// Setup Express and WebSocket server
 function setupServer() {
+  if (!DASHBOARD_ENABLED) return null;
+
   const app = express();
   const server = http.createServer(app);
   const wss = new WebSocket.Server({ server });
 
-  // Serve static files from public/
   app.use(express.static(path.join(__dirname, 'public')));
 
-  // WebSocket connection handling
   wss.on('connection', (ws) => {
-    console.log('Client connected to WebSocket');
     wsClients.add(ws);
-
-    // Send history to new client
-    const history = readHistory(100);
-    ws.send(JSON.stringify({ type: 'history', results: history }));
-
-    // Send current game state
+    ws.send(JSON.stringify({ type: 'history', results: readHistory(100) }));
     ws.send(JSON.stringify({ type: 'live', state: currentGameState }));
-
-    ws.on('close', () => {
-      console.log('Client disconnected from WebSocket');
-      wsClients.delete(ws);
-    });
-
-    ws.on('error', (err) => {
-      console.error('WebSocket client error:', err.message);
-      wsClients.delete(ws);
-    });
+    ws.on('close', () => wsClients.delete(ws));
+    ws.on('error', () => wsClients.delete(ws));
   });
 
-  server.listen(PORT, () => {
-    console.log(`Web server running at http://localhost:${PORT}`);
-  });
-
+  server.listen(PORT, () => console.log(`Web dashboard: http://localhost:${PORT}`));
   return server;
 }
 
 let browser = null;
+let isRestarting = false;
+
+async function captureWithRetry() {
+  try {
+    await captureCrashData();
+  } catch (err) {
+    console.error('Capture error:', err.message);
+    if (!isRestarting) {
+      isRestarting = true;
+      console.log('Attempting to restart browser in 10s...');
+      if (browser) await browser.close().catch(() => {});
+      setTimeout(() => {
+        isRestarting = false;
+        captureWithRetry();
+      }, 10000);
+    }
+  }
+}
 
 async function captureCrashData() {
-  setupServer();
-
   browser = await puppeteer.launch({
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-blink-features=AutomationControlled'
-    ]
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
   });
 
   const page = await browser.newPage();
@@ -138,23 +158,21 @@ async function captureCrashData() {
     try {
       const data = JSON.parse(response.payloadData);
       processCrashMessage(data, processedGames);
-    } catch (e) {
-      // Not JSON - ignore
-    }
+    } catch (e) {}
   });
 
+  // Handle browser/page crashes
+  page.on('error', err => { throw err; });
+  browser.on('disconnected', () => { if (!isRestarting) throw new Error('Browser disconnected'); });
+
   await page.goto(STAKE_CRASH_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-
   console.log('Monitoring crash game results...');
-  console.log(`Results saved to: ${OUTPUT_FILE}`);
-  console.log('Press Ctrl+C to stop.\n');
-
-  await new Promise(() => {});
+  
+  await new Promise(() => {}); // Keep alive
 }
 
 function processCrashMessage(data, processedGames) {
   if (data.type !== 'data' && data.type !== 'next') return;
-
   const payload = data.payload?.data;
   if (!payload) return;
 
@@ -163,7 +181,6 @@ function processCrashMessage(data, processedGames) {
 
   const { status, id: gameId, multiplier = 1.00 } = event;
 
-  // Broadcast live game state
   if (['in_progress', 'starting', 'crash', 'start'].includes(status)) {
     currentGameState = { status, multiplier, gameId };
     if (status === 'in_progress') {
@@ -172,11 +189,9 @@ function processCrashMessage(data, processedGames) {
     broadcast({ type: 'live', state: currentGameState });
   }
 
-  if (status !== 'crash') return;
-  if (processedGames.has(gameId)) return;
+  if (status !== 'crash' || processedGames.has(gameId)) return;
   processedGames.add(gameId);
 
-  // Prune old game IDs
   if (processedGames.size > 1000) {
     [...processedGames].slice(0, 500).forEach(id => processedGames.delete(id));
   }
@@ -184,35 +199,25 @@ function processCrashMessage(data, processedGames) {
   gamesSinceLast1x++;
   gamesSinceLast1000x++;
   gamesSinceDouble1x++;
-
-  if (multiplier < 1.01 && lastWas1x) {
-    gamesSinceDouble1x = 0;
-  }
+  if (multiplier < 1.01 && lastWas1x) gamesSinceDouble1x = 0;
   lastWas1x = (multiplier < 1.01);
 
   const result = {
-    gameId,
-    multiplier,
+    gameId, multiplier,
     timestamp: event.timestamp || new Date().toISOString(),
-    gamesSinceLast1x,
-    gamesSinceLast1000x,
-    gamesSinceDouble1x
+    gamesSinceLast1x, gamesSinceLast1000x, gamesSinceDouble1x
   };
 
   if (multiplier < 1.01) {
-    sendTelegram(`🔴 <b>INSTANT CRASH!</b>\n${multiplier.toFixed(2)}x after ${gamesSinceLast1x} games`);
+    notify('🔴 INSTANT CRASH!', `${multiplier.toFixed(2)}x after ${gamesSinceLast1x} games`, true);
     gamesSinceLast1x = 0;
-  }
-
-  if (multiplier >= 1000) {
-    sendTelegram(`🚀 <b>1000x+ MOON!</b>\n${multiplier.toFixed(2)}x after ${gamesSinceLast1000x} games`);
+  } else if (multiplier >= 1000) {
+    notify('🚀 1000x+ MOON!', `${multiplier.toFixed(2)}x after ${gamesSinceLast1000x} games`, true);
     gamesSinceLast1000x = 0;
   }
 
   const multStr = (multiplier.toFixed(2) + 'x').padStart(10);
-  const since1x = String(result.gamesSinceLast1x).padStart(5);
-  const since1000x = String(result.gamesSinceLast1000x).padStart(5);
-  console.log(`\r\x1b[K[CRASH] ${multStr} | Game: ${gameId} | Since 1x: ${since1x} | Since 1000x: ${since1000x}`);
+  console.log(`\r\x1b[K[CRASH] ${multStr} | Game: ${gameId} | Since 1x: ${result.gamesSinceLast1x} | Since 1000x: ${result.gamesSinceLast1000x}`);
 
   fs.appendFileSync(OUTPUT_FILE, JSON.stringify(result) + '\n');
   broadcast({ type: 'result', result });
@@ -220,16 +225,14 @@ function processCrashMessage(data, processedGames) {
 
 async function cleanup() {
   console.log('\nShutting down...');
-  if (browser) {
-    await browser.close().catch(() => browser.process()?.kill('SIGKILL'));
-    browser = null;
-  }
+  if (browser) await browser.close().catch(() => {});
   process.exit(0);
 }
 
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
-process.on('uncaughtException', (err) => { console.error('Uncaught exception:', err); cleanup(); });
-process.on('unhandledRejection', (err) => { console.error('Unhandled rejection:', err); cleanup(); });
+process.on('uncaughtException', cleanup);
+process.on('unhandledRejection', cleanup);
 
-captureCrashData().catch((err) => { console.error('Fatal error:', err); cleanup(); });
+setupServer();
+captureWithRetry();

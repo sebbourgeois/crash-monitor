@@ -9,6 +9,7 @@
   "dependencies": {
     "dotenv": "^17.2.3",
     "express": "^4.21.0",
+    "node-notifier": "^10.0.1",
     "puppeteer": "^23.0.0",
     "ws": "^8.18.0"
   }
