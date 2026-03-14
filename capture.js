@@ -7,27 +7,19 @@ const http = require('http');
 const WebSocket = require('ws');
 
 const STAKE_CRASH_URL = 'https://stake.com/casino/games/crash';
-const OUTPUT_FILE = 'crash_results.jsonl'; // JSON Lines format
+const OUTPUT_FILE = 'crash_results.jsonl';
 const PORT = process.env.PORT || 3000;
 
-// Telegram config from environment
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-// WebSocket clients
 const wsClients = new Set();
-
-// Streak counters
 let gamesSinceLast1x = 0;
 let gamesSinceLast1000x = 0;
-
-// Current game state for live updates
-let currentGameState = {
-  status: 'waiting',
-  multiplier: 1.00,
-  gameId: null
-};
+let gamesSinceDouble1x = 0;
+let lastWas1x = false;
+let currentGameState = { status: 'waiting', multiplier: 1.00, gameId: null };
 
 async function sendTelegram(message) {
   if (!TELEGRAM_ENABLED) return;
@@ -120,14 +112,10 @@ function setupServer() {
   return server;
 }
 
-// Global reference for cleanup
 let browser = null;
 
 async function captureCrashData() {
-  // Start web server first
   setupServer();
-
-  console.log('Launching browser...');
 
   browser = await puppeteer.launch({
     headless: true,
@@ -139,16 +127,14 @@ async function captureCrashData() {
   });
 
   const page = await browser.newPage();
-
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
   const client = await page.createCDPSession();
   await client.send('Network.enable');
 
-  // Track seen game IDs to avoid duplicate logs
   const processedGames = new Set();
 
-  client.on('Network.webSocketFrameReceived', ({ requestId, response }) => {
+  client.on('Network.webSocketFrameReceived', ({ response }) => {
     try {
       const data = JSON.parse(response.payloadData);
       processCrashMessage(data, processedGames);
@@ -157,7 +143,6 @@ async function captureCrashData() {
     }
   });
 
-  console.log(`Navigating to ${STAKE_CRASH_URL}...`);
   await page.goto(STAKE_CRASH_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
   console.log('Monitoring crash game results...');
@@ -173,94 +158,70 @@ function processCrashMessage(data, processedGames) {
   const payload = data.payload?.data;
   if (!payload) return;
 
-  // Extract crash event from various possible paths
   const event = payload.crash?.event || payload.event;
   if (!event || event.__typename !== 'MultiplayerCrash') return;
 
-  const status = event.status;
-  const gameId = event.id;
-  const multiplier = event.multiplier || 1.00;
+  const { status, id: gameId, multiplier = 1.00 } = event;
 
-  // Broadcast live game state for relevant statuses
-  // Stake statuses: pending, starting, start, in_progress, crash
-  if (status === 'in_progress' || status === 'starting' || status === 'crash' || status === 'start') {
-    currentGameState = {
-      status: status,
-      multiplier: multiplier,
-      gameId: gameId
-    };
-    // Log in_progress updates (can remove later)
+  // Broadcast live game state
+  if (['in_progress', 'starting', 'crash', 'start'].includes(status)) {
+    currentGameState = { status, multiplier, gameId };
     if (status === 'in_progress') {
       process.stdout.write(`\r[LIVE] ${multiplier.toFixed(2)}x    `);
     }
     broadcast({ type: 'live', state: currentGameState });
   }
 
-  // Only log to file when status is "crash" (round ended)
-  if (status === 'crash') {
-    // Avoid duplicate logs for same game
-    if (processedGames.has(gameId)) return;
-    processedGames.add(gameId);
+  if (status !== 'crash') return;
+  if (processedGames.has(gameId)) return;
+  processedGames.add(gameId);
 
-    // Keep set size manageable
-    if (processedGames.size > 1000) {
-      const iterator = processedGames.values();
-      for (let i = 0; i < 500; i++) {
-        processedGames.delete(iterator.next().value);
-      }
-    }
-
-    // Update streak counters
-    gamesSinceLast1x++;
-    gamesSinceLast1000x++;
-
-    // Check for x1.0 (instant crash - multiplier < 1.01)
-    if (multiplier < 1.01) {
-      sendTelegram(`🔴 <b>INSTANT CRASH!</b>\n${multiplier.toFixed(2)}x after ${gamesSinceLast1x} games`);
-      gamesSinceLast1x = 0;
-    }
-
-    // Check for x1000 or more
-    if (multiplier >= 1000) {
-      sendTelegram(`🚀 <b>1000x+ MOON!</b>\n${multiplier.toFixed(2)}x after ${gamesSinceLast1000x} games`);
-      gamesSinceLast1000x = 0;
-    }
-
-    const result = {
-      gameId: gameId,
-      multiplier: multiplier,
-      timestamp: event.timestamp || new Date().toISOString(),
-      gamesSinceLast1x: gamesSinceLast1x,
-      gamesSinceLast1000x: gamesSinceLast1000x
-    };
-
-    // Log to console (aligned output)
-    const multStr = (multiplier.toFixed(2) + 'x').padStart(10);
-    const since1x = String(gamesSinceLast1x).padStart(5);
-    const since1000x = String(gamesSinceLast1000x).padStart(5);
-    console.log(`[CRASH] ${multStr} | Game: ${gameId} | Since 1x: ${since1x} | Since 1000x: ${since1000x}`);
-
-    // Save to file (JSON Lines format - one JSON object per line)
-    fs.appendFileSync(OUTPUT_FILE, JSON.stringify(result) + '\n');
-
-    // Broadcast to WebSocket clients
-    broadcast({ type: 'result', result });
+  // Prune old game IDs
+  if (processedGames.size > 1000) {
+    [...processedGames].slice(0, 500).forEach(id => processedGames.delete(id));
   }
+
+  gamesSinceLast1x++;
+  gamesSinceLast1000x++;
+  gamesSinceDouble1x++;
+
+  if (multiplier < 1.01 && lastWas1x) {
+    gamesSinceDouble1x = 0;
+  }
+  lastWas1x = (multiplier < 1.01);
+
+  const result = {
+    gameId,
+    multiplier,
+    timestamp: event.timestamp || new Date().toISOString(),
+    gamesSinceLast1x,
+    gamesSinceLast1000x,
+    gamesSinceDouble1x
+  };
+
+  if (multiplier < 1.01) {
+    sendTelegram(`🔴 <b>INSTANT CRASH!</b>\n${multiplier.toFixed(2)}x after ${gamesSinceLast1x} games`);
+    gamesSinceLast1x = 0;
+  }
+
+  if (multiplier >= 1000) {
+    sendTelegram(`🚀 <b>1000x+ MOON!</b>\n${multiplier.toFixed(2)}x after ${gamesSinceLast1000x} games`);
+    gamesSinceLast1000x = 0;
+  }
+
+  const multStr = (multiplier.toFixed(2) + 'x').padStart(10);
+  const since1x = String(result.gamesSinceLast1x).padStart(5);
+  const since1000x = String(result.gamesSinceLast1000x).padStart(5);
+  console.log(`\r\x1b[K[CRASH] ${multStr} | Game: ${gameId} | Since 1x: ${since1x} | Since 1000x: ${since1000x}`);
+
+  fs.appendFileSync(OUTPUT_FILE, JSON.stringify(result) + '\n');
+  broadcast({ type: 'result', result });
 }
 
 async function cleanup() {
   console.log('\nShutting down...');
   if (browser) {
-    try {
-      await browser.close();
-      console.log('Browser closed.');
-    } catch (err) {
-      console.error('Error closing browser:', err.message);
-      // Force kill any remaining Chrome processes spawned by this instance
-      if (browser.process()) {
-        browser.process().kill('SIGKILL');
-      }
-    }
+    await browser.close().catch(() => browser.process()?.kill('SIGKILL'));
     browser = null;
   }
   process.exit(0);
@@ -268,16 +229,7 @@ async function cleanup() {
 
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
-process.on('uncaughtException', async (err) => {
-  console.error('Uncaught exception:', err);
-  await cleanup();
-});
-process.on('unhandledRejection', async (err) => {
-  console.error('Unhandled rejection:', err);
-  await cleanup();
-});
+process.on('uncaughtException', (err) => { console.error('Uncaught exception:', err); cleanup(); });
+process.on('unhandledRejection', (err) => { console.error('Unhandled rejection:', err); cleanup(); });
 
-captureCrashData().catch(async (err) => {
-  console.error('Fatal error:', err);
-  await cleanup();
-});
+captureCrashData().catch((err) => { console.error('Fatal error:', err); cleanup(); });

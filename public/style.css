@@ -141,15 +141,15 @@ h2 {
   color: #a855f7;
 }
 
-.live-display.progress.tier-gold .live-multiplier {
-  color: #ffd700;
-  text-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+.live-display.progress.tier-turquoise .live-multiplier {
+  color: #00d2d3;
+  text-shadow: 0 0 20px rgba(0, 210, 211, 0.6);
   animation: glow-pulse 1s infinite ease-in-out;
 }
 
 @keyframes glow-pulse {
-  0%, 100% { text-shadow: 0 0 20px rgba(255, 215, 0, 0.6); }
-  50% { text-shadow: 0 0 40px rgba(255, 215, 0, 0.9), 0 0 60px rgba(255, 215, 0, 0.4); }
+  0%, 100% { text-shadow: 0 0 20px rgba(0, 210, 211, 0.6); }
+  50% { text-shadow: 0 0 40px rgba(0, 210, 211, 0.9), 0 0 60px rgba(0, 210, 211, 0.4); }
 }
 
 /* Stats Grid */
@@ -162,10 +162,10 @@ h2 {
 
 .streak-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 15px;
   margin-bottom: 30px;
-  max-width: 400px;
+  max-width: 600px;
 }
 
 .stat-card {
@@ -283,18 +283,18 @@ h2 {
   border: 1px solid #a855f7;
 }
 
-.pill.gold {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.4) 0%, rgba(255, 180, 0, 0.4) 50%, rgba(255, 215, 0, 0.4) 100%);
-  color: #ffd700;
-  border: 1px solid #ffd700;
-  box-shadow: 0 0 15px rgba(255, 215, 0, 0.4), 0 0 30px rgba(255, 215, 0, 0.2);
-  text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+.pill.turquoise {
+  background: linear-gradient(135deg, rgba(0, 210, 211, 0.4) 0%, rgba(0, 180, 181, 0.4) 50%, rgba(0, 210, 211, 0.4) 100%);
+  color: #00d2d3;
+  border: 1px solid #00d2d3;
+  box-shadow: 0 0 15px rgba(0, 210, 211, 0.4), 0 0 30px rgba(0, 210, 211, 0.2);
+  text-shadow: 0 0 10px rgba(0, 210, 211, 0.8);
   animation: fadeIn 0.3s ease, shimmer 2s infinite linear 0.3s;
 }
 
 @keyframes shimmer {
-  0%, 100% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.4), 0 0 30px rgba(255, 215, 0, 0.2); }
-  50% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.6), 0 0 40px rgba(255, 215, 0, 0.3); }
+  0%, 100% { box-shadow: 0 0 15px rgba(0, 210, 211, 0.4), 0 0 30px rgba(0, 210, 211, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(0, 210, 211, 0.6), 0 0 40px rgba(0, 210, 211, 0.3); }
 }
 
 /* New result highlight */

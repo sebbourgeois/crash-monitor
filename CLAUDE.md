@@ -32,6 +32,7 @@ TELEGRAM_CHAT_ID=your_chat_id   # Your Telegram chat ID
 **Script variants**:
 - `capture.js` - Main script with web dashboard, Telegram notifications for extreme results (instant crashes < 1.01x, moon shots >= 1000x)
 - `capture_v1.js` - Basic version without notifications or web server
+- `capture_v2.js` - Alternative version with Telegram support but no web server
 - `capture_notif.js` - Desktop notifications version (requires `npm install node-notifier`)
 
 **Data flow**:
@@ -47,23 +48,37 @@ TELEGRAM_CHAT_ID=your_chat_id   # Your Telegram chat ID
 - `style.css` - Dark theme (#1a1a2e background) with neon color-coded multiplier pills
 - `app.js` - WebSocket client, Chart.js distribution histogram, real-time updates
 
-**Multiplier color coding**:
-- Red (#ff4757): < 2x (instant crashes)
-- Orange (#ffa502): 2x - 10x
-- Green (#2ed573): 10x - 100x
-- Gold (#ffd700): 100x - 1000x
-- Pink (#ff6b9d): 1000x+ (moon shots)
+**Multiplier color coding** (defined in `public/app.js:getColorClass()`):
+- Red (#ff4757): < 1.01x (instant crash)
+- Orange (#ffa502): 1.01x - 1.99x
+- Green (#2ed573): 2x - 99.99x
+- Purple (#a855f7): 100x - 999.99x
+- Gold (#ffd700): 1000x+ (moon shots)
 
 **Output format** (JSONL - one JSON object per line):
 ```json
 {"gameId":"...","multiplier":2.34,"timestamp":"...","gamesSinceLast1x":5,"gamesSinceLast1000x":42}
 ```
 
+**WebSocket message types** (server → dashboard client):
+- `{ type: 'history', results: [...] }` - Initial batch of last 100 results sent on connect
+- `{ type: 'result', result: {...} }` - New crash result
+- `{ type: 'live', state: { status, multiplier, gameId } }` - Live game state updates
+
+**CDP event parsing chain** (in `processCrashMessage()`):
+1. Filter `data.type` for `'data'` or `'next'`
+2. Extract `payload.data.crash?.event || payload.data.event`
+3. Require `event.__typename === 'MultiplayerCrash'`
+4. Broadcast live state for statuses: `in_progress`, `starting`, `crash`, `start`
+5. Only persist and log results when `status === 'crash'`
+
 ## Key Implementation Details
 
 - Duplicate detection via Set of processed game IDs (auto-pruned at 1000 entries)
 - Streak counters track games since last instant crash (< 1.01x) and last moon (>= 1000x)
 - Runs headless with anti-detection flags (`--disable-blink-features=AutomationControlled`)
+- Dashboard keeps max 500 results in memory and 200 DOM pill elements for performance
+- Graceful shutdown on SIGINT/SIGTERM with browser cleanup
 
 ## Environment Variables
 

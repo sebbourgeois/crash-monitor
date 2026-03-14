@@ -18,6 +18,7 @@ const statMin = document.getElementById('stat-min');
 const statMax = document.getElementById('stat-max');
 const statSince1x = document.getElementById('stat-since1x');
 const statSince1000x = document.getElementById('stat-since1000x');
+const statSinceDouble1x = document.getElementById('stat-since-double1x');
 const liveDisplay = document.getElementById('live-display');
 const liveStatus = document.getElementById('live-status');
 const liveMultiplier = document.getElementById('live-multiplier');
@@ -103,7 +104,7 @@ function updateLiveDisplay(state) {
     liveDisplay.classList.add('progress');
     // Add tier colors based on multiplier
     if (multiplier >= 1000) {
-      liveDisplay.classList.add('tier-gold');
+      liveDisplay.classList.add('tier-turquoise');
     } else if (multiplier >= 100) {
       liveDisplay.classList.add('tier-purple');
     } else if (multiplier >= 2) {
@@ -125,7 +126,7 @@ function getColorClass(multiplier) {
   if (multiplier < 2) return 'orange';       // 1.01x - 1.99x
   if (multiplier < 100) return 'green';      // 2.0x - 99.99x
   if (multiplier < 1000) return 'purple';    // 100x - 999.99x
-  return 'gold';                             // 1000x+ moon shots
+  return 'turquoise';                         // 1000x+ moon shots
 }
 
 // Format multiplier for display
@@ -176,7 +177,7 @@ function calculateStats() {
       count: 0,
       since1x: null,
       since1000x: null,
-      distribution: { red: 0, orange: 0, green: 0, purple: 0, gold: 0 }
+      distribution: { red: 0, orange: 0, green: 0, purple: 0, turquoise: 0 }
     };
   }
 
@@ -190,13 +191,13 @@ function calculateStats() {
   const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 
   // Distribution buckets
-  const distribution = { red: 0, orange: 0, green: 0, purple: 0, gold: 0 };
+  const distribution = { red: 0, orange: 0, green: 0, purple: 0, turquoise: 0 };
   multipliers.forEach(m => {
     if (m < 1.01) distribution.red++;
     else if (m < 2) distribution.orange++;
     else if (m < 100) distribution.green++;
     else if (m < 1000) distribution.purple++;
-    else distribution.gold++;
+    else distribution.turquoise++;
   });
 
   // Get streak counters from latest result
@@ -210,6 +211,7 @@ function calculateStats() {
     count: results.length,
     since1x: latest?.gamesSinceLast1x ?? null,
     since1000x: latest?.gamesSinceLast1000x ?? null,
+    sinceDouble1x: latest?.gamesSinceDouble1x ?? null,
     distribution
   };
 }
@@ -225,6 +227,7 @@ function updateStats() {
   statMax.textContent = stats.max !== null ? formatMultiplier(stats.max) : '--';
   statSince1x.textContent = stats.since1x !== null ? stats.since1x : '--';
   statSince1000x.textContent = stats.since1000x !== null ? stats.since1000x : '--';
+  statSinceDouble1x.textContent = stats.sinceDouble1x !== null ? stats.sinceDouble1x : '--';
 }
 
 // Initialize or update chart
@@ -235,20 +238,20 @@ function updateChart() {
   const data = {
     labels: ['1.0x', '1.01-1.99x', '2-99x', '100-999x', '1000x+'],
     datasets: [{
-      data: [dist.red, dist.orange, dist.green, dist.purple, dist.gold],
+      data: [dist.red, dist.orange, dist.green, dist.purple, dist.turquoise],
       backgroundColor: [
         'rgba(255, 71, 87, 0.7)',
         'rgba(255, 165, 2, 0.7)',
         'rgba(46, 213, 115, 0.7)',
         'rgba(168, 85, 247, 0.7)',
-        'rgba(255, 215, 0, 0.7)'
+        'rgba(0, 210, 211, 0.7)'
       ],
       borderColor: [
         '#ff4757',
         '#ffa502',
         '#2ed573',
         '#a855f7',
-        '#ffd700'
+        '#00d2d3'
       ],
       borderWidth: 1
     }]
