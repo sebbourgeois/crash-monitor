@@ -19,8 +19,6 @@ const Elements = {
   resultsGrid: document.getElementById('results-grid'),
   statAverage: document.getElementById('stat-average'),
   statMedian: document.getElementById('stat-median'),
-  statGames: document.getElementById('stat-games'),
-  statMin: document.getElementById('stat-min'),
   statMax: document.getElementById('stat-max'),
   statSince1x: document.getElementById('stat-since1x'),
   statSince1000x: document.getElementById('stat-since1000x'),
@@ -69,7 +67,7 @@ function connect() {
 
 function handleNewResult(result) {
   State.results.unshift(result);
-  if (State.results.length > 500) State.results.pop();
+  if (State.results.length > 1000) State.results.pop();
   
   addNewPill(result);
   updateStats();
@@ -87,12 +85,73 @@ function getColorClass(m) {
   return 'turquoise';
 }
 
-function formatMultiplier(m) {
-  return m >= 1000 ? m.toFixed(0) + 'x' : m.toFixed(2) + 'x';
+function formatMultiplier(m, decimals = 2) {
+  if (m >= 1000) return m.toFixed(0) + 'x';
+  return m.toFixed(decimals) + 'x';
 }
+
+let displayMultiplier = 1.00;
+let lastFrameTime = performance.now();
+
+function animateMultiplier() {
+  const now = performance.now();
+  const dt = (now - lastFrameTime) / 1000;
+  lastFrameTime = now;
+
+  const targetMultiplier = parseFloat(State.liveGame.multiplier) || 1.00;
+  const status = State.liveGame.status;
+
+  if (status === 'in_progress') {
+    // 1. Prediction: Always drift upwards at the base crash rate (~6% per second)
+    // This ensures the number never stops moving even if packets are slow.
+    const drift = displayMultiplier * 0.06 * dt;
+    displayMultiplier += drift;
+
+    // 2. Correction: If we are behind the server's last known value, catch up.
+    // We use a relatively high catch-up factor to stay close to reality.
+    if (displayMultiplier < targetMultiplier) {
+      displayMultiplier += (targetMultiplier - displayMultiplier) * 0.2;
+    }
+    
+    // 3. Safety: Don't let the prediction fly too far ahead of the last known server value
+    // (cap at 0.1x ahead to maintain accuracy)
+    if (displayMultiplier > targetMultiplier + 0.1) {
+      displayMultiplier = targetMultiplier + 0.1;
+    }
+
+    Elements.liveMultiplier.textContent = formatMultiplier(displayMultiplier, 2);
+    
+    // Update tier color dynamically during progress
+    const tier = getColorClass(displayMultiplier);
+    Elements.liveDisplay.classList.remove('tier-orange', 'tier-green', 'tier-purple', 'tier-turquoise');
+    Elements.liveDisplay.classList.add(`tier-${tier}`);
+  } else {
+    // Reset or show the final result
+    displayMultiplier = targetMultiplier;
+    Elements.liveMultiplier.textContent = formatMultiplier(displayMultiplier, 2);
+    
+    // Final color on crash
+    if (status === 'crash') {
+      Elements.liveDisplay.classList.remove('tier-orange', 'tier-green', 'tier-purple', 'tier-turquoise');
+    }
+  }
+  
+  requestAnimationFrame(animateMultiplier);
+}
+
+requestAnimationFrame(animateMultiplier);
 
 function updateLiveDisplay(state) {
   const { status, multiplier } = state;
+  
+  // Reset display when a new game starts
+  if (status === 'starting' || status === 'start' || (status === 'in_progress' && State.liveGame.status !== 'in_progress')) {
+    displayMultiplier = 1.00;
+  }
+
+  State.liveGame.status = status;
+  State.liveGame.multiplier = multiplier;
+
   const statusLabels = {
     'in_progress': 'CRASHING...',
     'starting': 'PREPARING',
@@ -102,22 +161,24 @@ function updateLiveDisplay(state) {
   };
 
   Elements.liveStatus.textContent = statusLabels[status] || status.toUpperCase();
-  Elements.liveMultiplier.textContent = formatMultiplier(multiplier);
   
-  const currentStatus = Elements.liveDisplay.classList.contains(status);
+  const currentStatusClass = Elements.liveDisplay.classList.contains(status);
+  
+  // Remove all current tier classes
+  Elements.liveDisplay.classList.remove('tier-orange', 'tier-green', 'tier-purple', 'tier-turquoise');
+  
+  // Update base status class
   Elements.liveDisplay.className = `live-display ${status}`;
   
-  // Apply crash impact effect if transitioning to crash
-  if (status === 'crash' && !currentStatus) {
-    Elements.liveDisplay.classList.add('crash-impact');
-    setTimeout(() => Elements.liveDisplay.classList.remove('crash-impact'), 500);
+  // Apply initial tier class if in progress
+  if (status === 'in_progress') {
+    Elements.liveDisplay.classList.add(`tier-${getColorClass(multiplier)}`);
   }
   
-  if (status === 'in_progress') {
-    const tier = getColorClass(multiplier);
-    if (tier === 'purple' || tier === 'turquoise') {
-      Elements.liveDisplay.classList.add(`tier-${tier}`);
-    }
+  // Apply crash impact effect if transitioning to crash
+  if (status === 'crash' && !currentStatusClass) {
+    Elements.liveDisplay.classList.add('crash-impact');
+    setTimeout(() => Elements.liveDisplay.classList.remove('crash-impact'), 500);
   }
 }
 
@@ -141,10 +202,8 @@ function updateStats() {
   const avg = multipliers.reduce((a, b) => a + b, 0) / multipliers.length;
   const median = sorted[Math.floor(sorted.length / 2)];
   
-  Elements.statGames.textContent = State.results.length.toLocaleString();
   Elements.statAverage.textContent = avg.toFixed(2) + 'x';
   Elements.statMedian.textContent = median.toFixed(2) + 'x';
-  Elements.statMin.textContent = sorted[0].toFixed(2) + 'x';
   Elements.statMax.textContent = formatMultiplier(sorted[sorted.length - 1]);
 
   const latest = State.results[0];

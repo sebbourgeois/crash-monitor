@@ -68,7 +68,7 @@ function readHistory(count = 100) {
     if (!fs.existsSync(OUTPUT_FILE)) return [];
 
     const stats = fs.statSync(OUTPUT_FILE);
-    const bufferSize = Math.min(stats.size, 1024 * 100); // Read last 100KB max
+    const bufferSize = Math.min(stats.size, 1024 * 256); // Read last 256KB max
     const buffer = Buffer.alloc(bufferSize);
     
     const fd = fs.openSync(OUTPUT_FILE, 'r');
@@ -110,7 +110,7 @@ function setupServer() {
 
   wss.on('connection', (ws) => {
     wsClients.add(ws);
-    ws.send(JSON.stringify({ type: 'history', results: readHistory(100) }));
+    ws.send(JSON.stringify({ type: 'history', results: readHistory(1000) }));
     ws.send(JSON.stringify({ type: 'live', state: currentGameState }));
     ws.on('close', () => wsClients.delete(ws));
     ws.on('error', () => wsClients.delete(ws));

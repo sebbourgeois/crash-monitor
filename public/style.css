@@ -110,7 +110,7 @@ h1::before {
 
 .live-display.in_progress { border-color: rgba(14, 203, 129, 0.4); box-shadow: 0 0 40px rgba(14, 203, 129, 0.1); }
 .live-display.crash { border-color: rgba(246, 70, 93, 0.4); box-shadow: 0 0 40px rgba(246, 70, 93, 0.1); }
-.live-display.starting, .live-display.start { border-color: rgba(255, 159, 67, 0.4); box-shadow: 0 0 40px rgba(255, 159, 67, 0.1); }
+.live-display.starting, .live-display.start, .live-display.pending { border-color: rgba(255, 255, 255, 0.4); box-shadow: 0 0 40px rgba(255, 255, 255, 0.1); }
 
 /* Crash Impact Effect */
 .live-display.crash-impact {
@@ -133,7 +133,6 @@ h1::before {
   50% { color: #f6465d; }
   100% { color: #f6465d; }
 }
-.live-display.betting { border-color: rgba(255, 159, 67, 0.4); box-shadow: 0 0 40px rgba(255, 159, 67, 0.1); }
 
 .live-status {
   font-size: 0.875rem;
@@ -147,19 +146,37 @@ h1::before {
   font-family: 'Roboto Mono', monospace;
   font-size: 6rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: #ffffff; /* Base color is white */
   line-height: 1;
-  transition: color 0.3s;
+  transition: color 0.3s, transform 0.1s ease-out;
+  display: inline-block;
 }
 
-.progress .live-multiplier { color: var(--accent-green); }
-.crashed .live-multiplier { color: var(--accent-red); }
-.betting .live-multiplier { color: var(--accent-orange); }
+/* Status Based Rules */
+.starting .live-multiplier, .start .live-multiplier, .pending .live-multiplier,
+.starting .live-status, .start .live-status, .pending .live-status { color: #ffffff !important; }
+.crash .live-multiplier, .crash .live-status { color: var(--accent-red) !important; }
 
-.tier-purple .live-multiplier { color: var(--accent-purple); }
-.tier-turquoise .live-multiplier { 
+/* Dynamic Tier Rules (only apply during in_progress) */
+.in_progress.tier-orange .live-multiplier { color: var(--accent-orange); }
+.in_progress.tier-green .live-multiplier { color: var(--accent-green); }
+.in_progress.tier-purple .live-multiplier { 
+  color: var(--accent-purple);
+  text-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
+}
+.in_progress.tier-turquoise .live-multiplier { 
   color: var(--accent-turquoise);
   text-shadow: 0 0 30px rgba(0, 210, 211, 0.5);
+}
+
+.in_progress .live-multiplier { 
+  animation: multiplier-pulse 2s infinite ease-in-out;
+}
+
+@keyframes multiplier-pulse {
+  0% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.02); filter: brightness(1.2); }
+  100% { transform: scale(1); filter: brightness(1); }
 }
 
 /* Dashboard Grid */
