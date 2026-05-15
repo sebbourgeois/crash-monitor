@@ -1,0 +1,20 @@
+[Unit]
+Description=Stake Crash Monitor
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=sb
+Group=sb
+WorkingDirectory=/home/sb/github/stake-crash-archives
+ExecStart=/home/sb/.nvm/versions/node/v20.18.0/bin/node /home/sb/github/stake-crash-archives/capture.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

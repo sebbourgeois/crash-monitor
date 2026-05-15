@@ -7,6 +7,7 @@
     "start": "node capture.js"
   },
   "dependencies": {
+    "better-sqlite3": "^12.10.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.0",
     "node-notifier": "^10.0.1",

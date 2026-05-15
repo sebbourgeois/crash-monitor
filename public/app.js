@@ -1,6 +1,7 @@
 // State Management
 const State = {
   results: [],
+  streaks: null,
   chart: null,
   isAudioEnabled: false,
   liveGame: { status: 'waiting', multiplier: 1.00, gameId: null },
@@ -53,6 +54,7 @@ function connect() {
     switch (data.type) {
       case 'history':
         State.results = data.results;
+        if (data.streaks) State.streaks = data.streaks;
         renderAll();
         break;
       case 'result':
@@ -68,11 +70,17 @@ function connect() {
 function handleNewResult(result) {
   State.results.unshift(result);
   if (State.results.length > 1000) State.results.pop();
-  
+
+  State.streaks = {
+    gamesSinceLast1x: result.gamesSinceLast1x,
+    gamesSinceLast1000x: result.gamesSinceLast1000x,
+    gamesSinceDouble1x: result.gamesSinceDouble1x
+  };
+
   addNewPill(result);
   updateStats();
   updateChart();
-  
+
   if (State.isAudioEnabled) playAlert(result.multiplier);
 }
 
@@ -206,10 +214,10 @@ function updateStats() {
   Elements.statMedian.textContent = median.toFixed(2) + 'x';
   Elements.statMax.textContent = formatMultiplier(sorted[sorted.length - 1]);
 
-  const latest = State.results[0];
-  Elements.statSince1x.textContent = latest.gamesSinceLast1x;
-  Elements.statSince1000x.textContent = latest.gamesSinceLast1000x;
-  Elements.statSinceDouble1x.textContent = latest.gamesSinceDouble1x;
+  const streaks = State.streaks || State.results[0];
+  Elements.statSince1x.textContent = streaks.gamesSinceLast1x ?? '--';
+  Elements.statSince1000x.textContent = streaks.gamesSinceLast1000x ?? '--';
+  Elements.statSinceDouble1x.textContent = streaks.gamesSinceDouble1x ?? '--';
 }
 
 function updateChart() {

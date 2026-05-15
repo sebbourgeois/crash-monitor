@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stake Crash Analytics</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>STAKE CRASH ANALYTICS</h1>
+      <div class="header-right">
+        <a href="/" class="nav-link">&larr; Live Dashboard</a>
+      </div>
+    </header>
+
+    <div class="period-selector" id="period-selector">
+      <button data-period="1h">1H</button>
+      <button data-period="3h">3H</button>
+      <button data-period="12h">12H</button>
+      <button data-period="1d">1D</button>
+      <button data-period="1w">1W</button>
+      <button data-period="1m">1M</button>
+      <button data-period="3m">3M</button>
+      <button data-period="6m">6M</button>
+      <button data-period="all" class="active">ALL</button>
+    </div>
+
+    <section class="panel">
+      <h2>Overview</h2>
+      <div class="stats-container" id="overview-cards"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Rare Events</h2>
+      <div class="stats-container" id="rare-cards"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Multiplier Distribution (All Time)</h2>
+      <div class="chart-container chart-tall">
+        <canvas id="chart-distribution"></canvas>
+      </div>
+    </section>
+
+    <div class="dashboard-grid analytics-charts">
+      <section class="panel">
+        <h2 id="title-volume">Games Over Time</h2>
+        <div class="chart-container">
+          <canvas id="chart-volume"></canvas>
+        </div>
+      </section>
+      <section class="panel">
+        <h2 id="title-mean">Mean Multiplier Over Time</h2>
+        <div class="chart-container">
+          <canvas id="chart-mean"></canvas>
+        </div>
+      </section>
+      <section class="panel">
+        <h2 id="title-1000x">1000x+ Over Time</h2>
+        <div class="chart-container">
+          <canvas id="chart-1000x"></canvas>
+        </div>
+      </section>
+      <section class="panel">
+        <h2 id="title-instant">Instant Crashes Over Time</h2>
+        <div class="chart-container">
+          <canvas id="chart-instant"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Top 10 Multipliers</h2>
+      <div class="table-wrap">
+        <table class="data-table" id="top-table">
+          <thead>
+            <tr><th>#</th><th>Multiplier</th><th>When</th><th>Game ID</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="footnote" id="footnote"></p>
+  </div>
+  <script src="analytics.js"></script>
+</body>
+</html>
