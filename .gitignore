@@ -1,3 +1,28 @@
+# Dependencies
 node_modules/
+
+# Environment
 .env
+.env.local
+
+# Data store
 crash_results.jsonl
+crash_results.db
+crash_results.db-wal
+crash_results.db-shm
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local agent / tool settings
+.claude/
