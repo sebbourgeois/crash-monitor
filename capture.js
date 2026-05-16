@@ -379,6 +379,9 @@ async function captureCrashData() {
   await new Promise(() => {}); // Keep alive
 }
 
+// Stake's UI truncates to 2 decimals (e.g. 1.0089 → "1.00x", not "1.01x"). Match that.
+const floorMult = (m) => (Math.floor(m * 100) / 100).toFixed(2);
+
 function processCrashMessage(data, processedGames) {
   if (data.type !== 'data' && data.type !== 'next') return;
   const payload = data.payload?.data;
@@ -392,7 +395,7 @@ function processCrashMessage(data, processedGames) {
   if (['in_progress', 'starting', 'crash', 'start'].includes(status)) {
     currentGameState = { status, multiplier, gameId };
     if (status === 'in_progress') {
-      process.stdout.write(`\r[LIVE] ${multiplier.toFixed(2)}x    `);
+      process.stdout.write(`\r[LIVE] ${floorMult(multiplier)}x    `);
     }
     broadcast({ type: 'live', state: currentGameState });
   }
@@ -418,14 +421,14 @@ function processCrashMessage(data, processedGames) {
   };
 
   if (multiplier < 1.01) {
-    notify('🔴 INSTANT CRASH!', `${multiplier.toFixed(2)}x after ${gamesSinceLast1x} games`, true);
+    notify('🔴 INSTANT CRASH!', `${floorMult(multiplier)}x after ${gamesSinceLast1x} games`, true);
     gamesSinceLast1x = 0;
   } else if (multiplier >= 1000) {
-    notify('🚀 1000x+ MOON!', `${multiplier.toFixed(2)}x after ${gamesSinceLast1000x} games`, true);
+    notify('🚀 1000x+ MOON!', `${floorMult(multiplier)}x after ${gamesSinceLast1000x} games`, true);
     gamesSinceLast1000x = 0;
   }
 
-  const multStr = (multiplier.toFixed(2) + 'x').padStart(10);
+  const multStr = (floorMult(multiplier) + 'x').padStart(10);
   console.log(`\r\x1b[K[CRASH] ${multStr} | Game: ${gameId} | Since 1x: ${result.gamesSinceLast1x} | Since 1000x: ${result.gamesSinceLast1000x}`);
 
   insertResult.run(result);

@@ -40,8 +40,8 @@ function fmtFloat(n, d = 2) {
 
 function fmtMult(n) {
   if (n === undefined || n === null || Number.isNaN(n)) return '--';
-  if (n >= 1000) return Math.round(n).toLocaleString() + 'x';
-  return Number(n).toFixed(2) + 'x';
+  if (n >= 1000) return Math.floor(n).toLocaleString() + 'x';
+  return (Math.floor(Number(n) * 100) / 100).toFixed(2) + 'x';
 }
 
 function card(label, value) {

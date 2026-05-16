@@ -94,8 +94,9 @@ function getColorClass(m) {
 }
 
 function formatMultiplier(m, decimals = 2) {
-  if (m >= 1000) return m.toFixed(0) + 'x';
-  return m.toFixed(decimals) + 'x';
+  if (m >= 1000) return Math.floor(m) + 'x';
+  const f = Math.pow(10, decimals);
+  return (Math.floor(m * f) / f).toFixed(decimals) + 'x';
 }
 
 let displayMultiplier = 1.00;
