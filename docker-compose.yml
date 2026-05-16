@@ -1,0 +1,21 @@
+services:
+  crash-monitor:
+    build: .
+    image: stake-crash-monitor:latest
+    container_name: stake-crash-monitor
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      DB_PATH: /data/crash_results.db
+      PORT: 3000
+      DASHBOARD_ENABLED: ${DASHBOARD_ENABLED:-true}
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      DESKTOP_NOTIFICATIONS_ENABLED: "false"
+    volumes:
+      - crash_data:/data
+
+volumes:
+  crash_data:
