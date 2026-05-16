@@ -8,7 +8,7 @@ const notifier = require('node-notifier');
 const Database = require('better-sqlite3');
 
 const STAKE_CRASH_URL = 'https://stake.com/casino/games/crash';
-const DB_FILE = 'crash_results.db';
+const DB_FILE = process.env.DB_PATH || 'crash_results.db';
 const PORT = process.env.PORT || 3000;
 
 const db = new Database(DB_FILE);
