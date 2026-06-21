@@ -16,5 +16,16 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
+# Resilient shutdown / leak prevention.
+# KillSignal=SIGTERM lets capture.js's cleanup() run on a normal stop; KillMode=control-group
+# then SIGKILLs anything left in the cgroup (e.g. headless Chrome) after TimeoutStopSec.
+# ExecStopPost is a system-wide safety net: it sweeps any leaked puppeteer Chrome by name even
+# if the main process was hard-killed (kill -9 skips cleanup()) or started outside systemd. It
+# runs after the unit fully stops and before any restart's ExecStart, so it can't hit a live browser.
+KillSignal=SIGTERM
+KillMode=control-group
+TimeoutStopSec=20
+ExecStopPost=-/usr/bin/pkill -9 -f puppeteer_dev_chrome_profile
+
 [Install]
 WantedBy=multi-user.target

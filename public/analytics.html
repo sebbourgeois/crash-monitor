@@ -3,16 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stake Crash Analytics</title>
+  <title>STAKE CRASH // ANALYTICS</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>STAKE CRASH ANALYTICS</h1>
+      <h1>
+        <span class="brand-block"></span>
+        STAKE&nbsp;CRASH
+        <span class="brand-sub">analytics</span>
+      </h1>
       <div class="header-right">
-        <a href="/" class="nav-link">&larr; Live Dashboard</a>
+        <a href="/" class="nav-link">← Live Dashboard</a>
       </div>
     </header>
 
@@ -29,17 +33,17 @@
     </div>
 
     <section class="panel">
-      <h2>Overview</h2>
+      <h2>01 / Overview</h2>
       <div class="stats-container" id="overview-cards"></div>
     </section>
 
     <section class="panel">
-      <h2>Rare Events</h2>
+      <h2>02 / Rare Events</h2>
       <div class="stats-container" id="rare-cards"></div>
     </section>
 
     <section class="panel">
-      <h2>Multiplier Distribution (All Time)</h2>
+      <h2>03 / Distribution</h2>
       <div class="chart-container chart-tall">
         <canvas id="chart-distribution"></canvas>
       </div>
@@ -73,7 +77,7 @@
     </div>
 
     <section class="panel">
-      <h2>Top 10 Multipliers</h2>
+      <h2>08 / Top 10 Multipliers</h2>
       <div class="table-wrap">
         <table class="data-table" id="top-table">
           <thead>
@@ -82,9 +86,8 @@
           <tbody></tbody>
         </table>
       </div>
+      <p class="footnote" id="footnote"></p>
     </section>
-
-    <p class="footnote" id="footnote"></p>
   </div>
   <script src="analytics.js"></script>
 </body>

@@ -3,18 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stake Crash Monitor | Live</title>
+  <title>STAKE CRASH // LIVE</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>STAKE CRASH LIVE</h1>
+      <h1>
+        <span class="brand-block"></span>
+        STAKE&nbsp;CRASH
+        <span class="brand-sub">live&nbsp;signal</span>
+      </h1>
       <div class="header-right">
-        <a href="/analytics.html" class="nav-link">Analytics &rarr;</a>
+        <a href="/analytics.html" class="nav-link">Analytics →</a>
         <button id="audio-toggle" class="audio-toggle" title="Toggle Sound Alerts">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
         </button>
         <div id="status" class="status disconnected">Disconnected</div>
       </div>
@@ -22,6 +26,8 @@
 
     <section class="live-section">
       <div class="live-display" id="live-display">
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
         <div class="live-status" id="live-status">WAITING</div>
         <div class="live-multiplier" id="live-multiplier">1.00x</div>
       </div>
@@ -30,34 +36,33 @@
     <div class="dashboard-grid">
       <div class="left-col">
         <section class="panel">
-          <h2>Game Statistics (Last 1000 games)</h2>
+          <h2>01 / Last 1000 Games</h2>
           <div class="stats-container">
             <div class="stat-card">
-              <div class="stat-label">AVERAGE</div>
+              <div class="stat-label">Average</div>
               <div class="stat-value" id="stat-average">--</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">MEDIAN</div>
+              <div class="stat-label">Median</div>
               <div class="stat-value" id="stat-median">--</div>
             </div>
             <div class="stat-card">
-              <div class="stat-label">MAX</div>
+              <div class="stat-label">Max</div>
               <div class="stat-value" id="stat-max">--</div>
             </div>
           </div>
 
-          <h2>Streak Tracking</h2>
           <div class="streak-container">
             <div class="stat-card streak">
-              <div class="stat-label">SINCE &lt;1.01x</div>
+              <div class="stat-label">Since &lt;1.01x</div>
               <div class="stat-value" id="stat-since1x">--</div>
             </div>
             <div class="stat-card streak">
-              <div class="stat-label">SINCE 1000x+</div>
+              <div class="stat-label">Since 1000x+</div>
               <div class="stat-value" id="stat-since1000x">--</div>
             </div>
             <div class="stat-card streak">
-              <div class="stat-label">SINCE DOUBLE 1.00x</div>
+              <div class="stat-label">Since Double 1.00x</div>
               <div class="stat-value" id="stat-since-double1x">--</div>
             </div>
           </div>
@@ -70,9 +75,9 @@
 
       <div class="right-col">
         <section class="panel">
-          <h2>Recent History</h2>
+          <h2>02 / Recent Feed</h2>
           <div id="results-grid" class="results-grid">
-            <!-- Pills will be dynamically inserted here -->
+            <!-- Pills injected by app.js -->
           </div>
         </section>
       </div>

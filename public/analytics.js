@@ -1,3 +1,11 @@
+// Brutalist Chart.js theme (shared look across both pages)
+if (window.Chart) {
+  Chart.defaults.font.family = "'Space Mono', monospace";
+  Chart.defaults.font.weight = '700';
+  Chart.defaults.color = '#8b8b84';
+  Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+}
+
 const Elements = {
   overview: document.getElementById('overview-cards'),
   rare: document.getElementById('rare-cards'),
@@ -65,8 +73,8 @@ function baseChartOptions(extra = {}) {
     maintainAspectRatio: false,
     plugins: { legend: { display: false }, tooltip: { intersect: false, mode: 'index' } },
     scales: {
-      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#929aa5' } },
-      x: { grid: { display: false }, ticks: { color: '#929aa5', maxRotation: 0, autoSkip: true, autoSkipPadding: 12 } }
+      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#8b8b84' } },
+      x: { grid: { display: false }, ticks: { color: '#8b8b84', maxRotation: 0, autoSkip: true, autoSkipPadding: 12 } }
     },
     ...extra
   };
@@ -164,10 +172,10 @@ function renderDistribution(d) {
       labels: ['<1.01x', '1.01–1.99', '2–99', '100–999', '1000+'],
       datasets: [{
         data,
-        backgroundColor: Object.values(colors).map(c => c + '44'),
+        backgroundColor: Object.values(colors).map(c => c + '33'),
         borderColor: Object.values(colors),
         borderWidth: 2,
-        borderRadius: 4
+        borderRadius: 0
       }]
     },
     options: baseChartOptions({

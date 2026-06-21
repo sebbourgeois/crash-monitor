@@ -1,3 +1,11 @@
+// Brutalist Chart.js theme (shared look across both pages)
+if (window.Chart) {
+  Chart.defaults.font.family = "'Space Mono', monospace";
+  Chart.defaults.font.weight = '700';
+  Chart.defaults.color = '#8b8b84';
+  Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+}
+
 // State Management
 const State = {
   results: [],
@@ -238,10 +246,10 @@ function updateChart() {
         labels: ['1.00x', '1.01-1.99', '2-99', '100-999', '1000x+'],
         datasets: [{
           data,
-          backgroundColor: Object.values(State.colors).map(c => c + '44'),
+          backgroundColor: Object.values(State.colors).map(c => c + '33'),
           borderColor: Object.values(State.colors),
           borderWidth: 2,
-          borderRadius: 4
+          borderRadius: 0
         }]
       },
       options: {
@@ -249,8 +257,8 @@ function updateChart() {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#929aa5' } },
-          x: { grid: { display: false }, ticks: { color: '#929aa5' } }
+          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#8b8b84' } },
+          x: { grid: { display: false }, ticks: { color: '#8b8b84' } }
         }
       }
     });

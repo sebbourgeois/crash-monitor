@@ -357,23 +357,29 @@ async function captureCrashData() {
   const page = await browser.newPage();
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-  const client = await page.createCDPSession();
-  await client.send('Network.enable');
-
   const processedGames = new Set();
-
-  client.on('Network.webSocketFrameReceived', ({ response }) => {
-    try {
-      const data = JSON.parse(response.payloadData);
-      processCrashMessage(data, processedGames);
-    } catch (e) {}
-  });
 
   // Handle browser/page crashes
   page.on('error', err => { throw err; });
   browser.on('disconnected', () => { if (!isRestarting) throw new Error('Browser disconnected'); });
 
   await page.goto(STAKE_CRASH_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+
+  // Attach the CDP Network listener AFTER navigation. Enabling Network on a
+  // freshly-created CDP session while still on about:blank and then navigating
+  // makes Chrome stop delivering Network.webSocketFrameReceived to that session,
+  // so the crash subscription frames never arrive (dashboard stays stuck at 1.00x).
+  // Enabling it once the page is loaded — it holds a persistent GraphQL crash
+  // subscription — restores frame delivery.
+  const client = await page.createCDPSession();
+  client.on('Network.webSocketFrameReceived', ({ response }) => {
+    try {
+      const data = JSON.parse(response.payloadData);
+      processCrashMessage(data, processedGames);
+    } catch (e) {}
+  });
+  await client.send('Network.enable');
+
   console.log('Monitoring crash game results...');
   
   await new Promise(() => {}); // Keep alive
