@@ -7,11 +7,15 @@
 # day it still archives the previous calendar month, so a missed or manually
 # retried run does the same thing.
 #
+# Every site with a database on disk is archived into its own directory, so a
+# single cron entry covers Stake and Shuffle without being edited.
+#
 # Usage:
 #   ./dump-last-month.sh [extra dump-monthly.sh args...]
 #
 # Any extra arguments are passed through, e.g. `./dump-last-month.sh -z` to
-# gzip the CSV. Override the target month with MONTH=YYYY-MM for a backfill.
+# gzip the CSV, or `-s shuffle` to archive just one site. Override the target
+# month with MONTH=YYYY-MM for a backfill.
 #
 # Installed as:
 #   5 0 1 * * /home/sb/github/stake-crash-archives/dump-last-month.sh >> ... 2>&1

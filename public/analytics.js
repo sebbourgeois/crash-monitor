@@ -7,6 +7,8 @@ if (window.Chart) {
 }
 
 const Elements = {
+  siteTabs: document.getElementById('site-tabs'),
+  brandSub: document.getElementById('brand-sub'),
   overview: document.getElementById('overview-cards'),
   rare: document.getElementById('rare-cards'),
   topTbody: document.querySelector('#top-table tbody'),
@@ -32,8 +34,10 @@ const colors = {
 };
 
 const State = {
+  site: null,
   period: 'all',
-  charts: {}
+  charts: {},
+  reqId: 0   // guards against a slow response for a tab you already left
 };
 
 function fmtInt(n) {
@@ -86,6 +90,7 @@ function destroyCharts() {
 }
 
 async function refresh() {
+  const reqId = ++State.reqId;
   Elements.overview.innerHTML = '';
   Elements.rare.innerHTML = '';
   Elements.topTbody.innerHTML = '';
@@ -94,16 +99,22 @@ async function refresh() {
 
   let data;
   try {
-    const res = await fetch(`/api/analytics?period=${encodeURIComponent(State.period)}`);
+    const res = await fetch(
+      `/api/analytics?site=${encodeURIComponent(State.site)}&period=${encodeURIComponent(State.period)}`
+    );
     data = await res.json();
   } catch (e) {
+    if (reqId !== State.reqId) return;
     Elements.overview.textContent = 'Failed to load analytics.';
     Elements.footnote.textContent = '';
     console.error(e);
     return;
   }
+  if (reqId !== State.reqId) return; // a newer site/period request is already in flight
   if (!data || !data.total) {
-    Elements.overview.textContent = 'No data in this period.';
+    Elements.overview.textContent = data && data.error
+      ? data.error
+      : `No ${SiteTabs.find(State.site).tab} data in this period.`;
     Elements.footnote.textContent = '';
     return;
   }
@@ -246,7 +257,7 @@ function renderTop(d) {
 function renderFootnote(d) {
   const first = d.firstMs ? new Date(d.firstMs).toLocaleString() : '?';
   const last = d.lastMs ? new Date(d.lastMs).toLocaleString() : '?';
-  Elements.footnote.textContent = `Data range: ${first} → ${last}`;
+  Elements.footnote.textContent = `${SiteTabs.find(State.site).tab} — data range: ${first} → ${last}`;
 }
 
 function setupSelector() {
@@ -259,5 +270,16 @@ function setupSelector() {
   });
 }
 
-setupSelector();
-refresh();
+function switchSite(key) {
+  State.site = key;
+  Elements.brandSub.textContent = `analytics · ${SiteTabs.find(key).tab}`;
+  refresh();
+}
+
+(async function init() {
+  await SiteTabs.load();
+  const start = SiteTabs.initial();
+  SiteTabs.render(Elements.siteTabs, start, switchSite);
+  setupSelector();
+  switchSite(start);
+})();

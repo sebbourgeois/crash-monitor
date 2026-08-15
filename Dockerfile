@@ -29,7 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     NODE_ENV=production \
-    DB_PATH=/data/crash_results.db
+    DB_PATH=/data/crash_results.db \
+    SHUFFLE_DB_PATH=/data/shuffle_crash_results.db
 
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /home/app --create-home app \
@@ -40,6 +41,7 @@ WORKDIR /app
 
 COPY --from=builder --chown=app:app /app/node_modules ./node_modules
 COPY --chown=app:app package.json capture.js ./
+COPY --chown=app:app lib ./lib
 COPY --chown=app:app public ./public
 
 USER app
