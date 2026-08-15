@@ -1,8 +1,8 @@
 <div align="center">
 
-# Stake Crash Monitor
+# Crash Monitor
 
-**Real-time capture, storage and analysis of the Stake.com Crash game feed.**
+**Real-time capture, storage and analysis of the Stake.com and Shuffle.com Crash game feeds.**
 
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22.12-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![SQLite](https://img.shields.io/badge/storage-SQLite%20WAL-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
@@ -12,20 +12,28 @@
 
 </div>
 
-A headless browser attaches to the Crash page over the Chrome DevTools Protocol, intercepts the live `MultiplayerCrash` WebSocket stream, persists every round to SQLite, and serves a live dashboard plus a period-windowed analytics dashboard.
+A headless browser attaches to each site's Crash page over the Chrome DevTools Protocol, intercepts the live WebSocket stream, persists every round to SQLite, and serves a live dashboard plus a period-windowed analytics dashboard. Both dashboards have a tab per site.
+
+| Tab | Page | Database |
+|---|---|---|
+| **Stake.com** | `stake.com/casino/games/crash` | `crash_results.db` |
+| **Shuffle.com** | `shuffle.com/games/originals/crash` | `shuffle_crash_results.db` |
+
+Each site is fully independent — its own browser, its own database, its own streak counters and its own stall watchdog — so one site going down never disturbs the other's archive.
 
 > [!NOTE]
-> This tool is **read-only**. It observes the public crash feed without placing bets, clicking, or otherwise interacting with the page. It is intended for statistical analysis, research, and learning.
+> This tool is **read-only**. It observes the public crash feeds without placing bets, clicking, or otherwise interacting with the pages. It is intended for statistical analysis, research, and learning.
 
 ## Features
 
-- **Real-time capture** — Puppeteer + CDP (`Network.webSocketFrameReceived`) taps the live `MultiplayerCrash` stream with anti-detection flags.
-- **SQLite persistence** — Every round is written to `crash_results.db` via `better-sqlite3` in WAL mode, with an indexed millisecond timestamp for fast time-window queries.
-- **Live dashboard** (`/`) — WebSocket-pushed multiplier ticker, streak counters, recent-game pills, and a live distribution histogram.
-- **Analytics dashboard** (`/analytics.html`) — Period selector (`1h` → `6m` → `all`) over volume, mean, p90/p99, distribution, rare-event gaps, and Top 10 multipliers.
-- **Monthly archives** — `dump-monthly.sh` exports per-month CSV + JSON stats, ready to schedule with cron. The generated archives are committed to this repo, so it also ships as a [public dataset](#published-archive) of 538k+ rounds.
-- **Multi-channel notifications** — Console, Telegram, and desktop alerts for instant crashes (`< 1.01x`) and 1000x+ moon shots.
-- **Resilient** — In-process browser relaunch on disconnect, a stall watchdog for silent feed outages, and a `/api/health` endpoint for external monitoring.
+- **Multi-site capture** — Stake.com and Shuffle.com are monitored side by side, each in its own browser and its own database. Adding a third site means one entry in `lib/sites.js`.
+- **Real-time capture** — Puppeteer + CDP (`Network.webSocketFrameReceived`) taps each site's live crash stream with anti-detection flags.
+- **SQLite persistence** — Every round is written to that site's database via `better-sqlite3` in WAL mode, with an indexed millisecond timestamp for fast time-window queries.
+- **Live dashboard** (`/`) — Site tabs, WebSocket-pushed multiplier ticker, streak counters, recent-game pills, and a live distribution histogram.
+- **Analytics dashboard** (`/analytics.html`) — Site tabs plus a period selector (`1h` → `6m` → `all`) over volume, mean, p90/p99, distribution, rare-event gaps, and Top 10 multipliers.
+- **Monthly archives** — `dump-monthly.sh` exports per-month CSV + JSON stats for every site, ready to schedule with cron. The generated archives are committed to this repo, so it also ships as a [public dataset](#published-archive) of 538k+ rounds.
+- **Multi-channel notifications** — Console, Telegram, and desktop alerts for instant crashes (`< 1.01x`) and 1000x+ moon shots, labelled by site.
+- **Resilient** — Per-site browser relaunch on disconnect, a per-site stall watchdog for silent feed outages, and a `/api/health` endpoint for external monitoring.
 - **Deployable** — Ships with a `systemd` unit and a production-ready `Dockerfile` / `docker compose` setup with a persistent volume.
 
 ## Requirements
@@ -71,7 +79,10 @@ All configuration is via environment variables (a `.env` file is loaded automati
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3000` | Web server / WebSocket port |
-| `DB_PATH` | `crash_results.db` | SQLite file path (Compose sets this to `/data/crash_results.db`) |
+| `DB_PATH` | `crash_results.db` | Stake SQLite file (Compose sets this to `/data/crash_results.db`) |
+| `SHUFFLE_DB_PATH` | `shuffle_crash_results.db` | Shuffle SQLite file — must never be the same file as `DB_PATH` |
+| `STAKE_ENABLED` | `true` | Set to `false` to stop capturing Stake; its archive stays browsable |
+| `SHUFFLE_ENABLED` | `true` | Same for Shuffle |
 | `DASHBOARD_ENABLED` | `true` | Set to `false` to run as a capture-only daemon (skips Express + WS) |
 | `TELEGRAM_ENABLED` | `false` | Send extreme-event alerts via Telegram |
 | `TELEGRAM_BOT_TOKEN` | — | Bot token from [@BotFather](https://t.me/BotFather) |
@@ -84,37 +95,53 @@ All configuration is via environment variables (a `.env` file is loaded automati
 > [!TIP]
 > To find your `TELEGRAM_CHAT_ID`, message your bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy the `chat.id` field.
 
+> [!NOTE]
+> Each enabled site runs its own headless Chromium, so two sites need roughly twice the memory of one. Disable a site with `SHUFFLE_ENABLED=false` / `STAKE_ENABLED=false` if that is tight — its dashboard tab keeps serving whatever is already archived.
+
 ## Stall watchdog
 
-The capture can stall silently: the process stays alive and the event loop keeps running, but Stake stops delivering websocket frames. Nothing throws, so neither the retry loop nor the supervisor notices — this repo's own DB has a 7.8 h gap and a 54 h gap that happened inside a single long-lived PID.
+A capture can stall silently: the process stays alive and the event loop keeps running, but the site stops delivering websocket frames. Nothing throws, so neither the retry loop nor the supervisor notices — this repo's own Stake DB has a 7.8 h gap and a 54 h gap that happened inside a single long-lived PID.
 
-"No row written for `WATCHDOG_STALE_MS`" is therefore the liveness signal, and the watchdog escalates on it:
+"No row written for `WATCHDOG_STALE_MS`" is therefore the liveness signal, and each site is watched separately:
 
-1. **Relaunch the browser** in-process, and give it one more full window.
-2. **Exit with status 1** if that window also passes with no result, so the supervisor (`Restart=always` under systemd, `restart: unless-stopped` under Compose) rebuilds the process from scratch.
+1. **Relaunch that site's browser** in-process, and give it one more full window.
+2. If that window also passes with no result:
+   - **every enabled site is stale** → the process is wedged, so it **exits with status 1** and the supervisor (`Restart=always` under systemd, `restart: unless-stopped` under Compose) rebuilds it from scratch;
+   - **another site is still delivering results** → only the stalled site keeps relaunching. Restarting the process here would punch a hole in the healthy site's archive to fix a problem it does not have.
 
-Tier 1 is routine self-healing and only logs; tier 2 sends a Telegram alert.
+Tier 1 is routine self-healing and only logs; tier 2 sends a Telegram alert (re-sent about hourly while the outage lasts, not once per window).
 
 > [!NOTE]
 > Threshold trade-off, measured over 90 days of this DB: gaps longer than 3 min happen ~57 times, longer than 5 min 12 times, longer than 6 min 7 times — and every gap past 6 min was a real outage. So the default fires a cheap browser relaunch every other day or so and only restarts the service when it matters. Raise `WATCHDOG_STALE_MS` to `300000` if you would rather it stay quieter.
 
 ## Monthly archives
 
-`dump-monthly.sh` exports the database into one CSV + one stats file per calendar month (UTC) under `db-archives/`. It opens the DB **read-only**, so it is safe to run while the capture is live.
+`dump-monthly.sh` exports each site's database into one CSV + one stats file per calendar month (UTC). Every site gets its own output directory, so the two archives never mix:
+
+| Site | Database | Archive directory |
+|---|---|---|
+| `stake` | `crash_results.db` | `db-archives/` |
+| `shuffle` | `shuffle_crash_results.db` | `db-archives-shuffle/` |
+
+It opens the DBs **read-only**, so it is safe to run while the capture is live.
 
 ```bash
-./dump-monthly.sh                 # every month in the DB
-./dump-monthly.sh -m 2026-07 -z   # one month only, gzip the CSV
-./dump-monthly.sh -d other.db -o /mnt/backup
+./dump-monthly.sh                   # every site that has a DB, every month
+./dump-monthly.sh -s shuffle        # one site
+./dump-monthly.sh -m 2026-07 -z     # one month for every site, gzip the CSVs
+./dump-monthly.sh -s stake -d other.db -o /mnt/backup
 ```
 
 | Option | Default | Description |
 |---|---|---|
-| `-d DB` | `./crash_results.db` | Path to the SQLite file |
-| `-o OUTDIR` | `./db-archives` | Output directory |
+| `-s SITE` | every site with a DB on disk | `stake` or `shuffle`; repeatable |
+| `-d DB` | the site's own DB | Path to the SQLite file |
+| `-o OUTDIR` | the site's own archive dir | Output directory |
 | `-m YYYY-MM` | every month | Only this month; repeatable |
 | `-z` | off | Gzip the generated CSVs (`-9`) |
 | `-h` | — | Show help |
+
+Because `-d` and `-o` describe a single archive, they may only be combined with one `-s`. A site whose dump fails does not stop the others — the run finishes the rest and then exits non-zero, naming what failed.
 
 Each run writes:
 
@@ -132,20 +159,22 @@ Re-running overwrites: previously generated files are wiped first, so stale mont
 
 ### Scheduling with cron
 
-`dump-last-month.sh` is the cron entry point: it resolves the previous calendar month and hands it to `dump-monthly.sh`, leaving all other months untouched.
+`dump-last-month.sh` is the cron entry point: it resolves the previous calendar month and hands it to `dump-monthly.sh`, leaving all other months untouched. It covers every site that has a database, so the single cron line below did not change when Shuffle was added.
 
 ```cron
 5 0 1 * * /path/to/stake-crash-archives/dump-last-month.sh >> /path/to/stake-crash-archives/dump-monthly.log 2>&1
 ```
 
-Run on the 1st, it archives the month that just ended. Run on any other day, it still targets the previous calendar month, so a missed run retried by hand does the same thing. Override the target with `MONTH=2026-03 ./dump-last-month.sh` to backfill, and pass extra flags straight through (`./dump-last-month.sh -z`).
+Run on the 1st, it archives the month that just ended. Run on any other day, it still targets the previous calendar month, so a missed run retried by hand does the same thing. Override the target with `MONTH=2026-03 ./dump-last-month.sh` to backfill, and pass extra flags straight through (`./dump-last-month.sh -z`, `./dump-last-month.sh -s shuffle`).
 
 > [!NOTE]
 > Months are bucketed in UTC. The script forces `TZ=UTC` so hosts on a local timezone still line up with the stored timestamps.
 
 ## Published archive
 
-The `crash_results.db` file itself is gitignored, but the generated monthly archives **are committed** — so this repository doubles as a public dataset of the Stake Crash feed. Clone or fork it and you get every round captured so far, without running the capture yourself.
+The `.db` files themselves are gitignored, but the generated monthly archives **are committed** — so this repository doubles as a public dataset of the Crash feeds. Clone or fork it and you get every round captured so far, without running the capture yourself.
+
+The table below covers the Stake archive in `db-archives/`, which is where the history is. Shuffle capture started on 2026-08-15, so `db-archives-shuffle/` begins there and grows from the same monthly job.
 
 **Repository:** [`github.com/sebbourgeois/stake-crash-archives`](https://github.com/sebbourgeois/stake-crash-archives)
 **Archive path:** [`db-archives/`](https://github.com/sebbourgeois/stake-crash-archives/tree/master/db-archives)
@@ -212,6 +241,10 @@ Re-running overwrites in place, so `git diff` on `db-archives/` shows exactly wh
 
 ## Dashboards
 
+Both pages open with a **Stake.com / Shuffle.com** tab bar. The selected site is mirrored into `?site=` and remembered locally, so a tab survives a reload, follows you across the Live ↔ Analytics link, and can be shared as a direct link (`/?site=shuffle`). A site with capture disabled is marked with a red square and still serves its archive.
+
+Every site streams over the same WebSocket, so switching tabs is instant and the background site keeps updating — nothing is missed while you look at the other one.
+
 ### Live (`/`)
 
 - Big-font live multiplier with `WAITING` / `STARTING` / `IN PROGRESS` / `CRASHED` states.
@@ -239,6 +272,9 @@ Re-running overwrites in place, so `git diff` on `db-archives/` shows exactly wh
 
 Multipliers are displayed using **truncation** to 2 decimals (matching Stake's UI), so a captured value of `1.0089275` renders as `1.00x`, not `1.01x`. The DB stores full float precision.
 
+> [!NOTE]
+> The two feeds differ in precision at the source: Stake publishes a full float (`1.0089275`), while Shuffle publishes an already-rounded 2-decimal string (`"1.13"`). Both are stored as `REAL`, so a Shuffle row simply carries no digits past the second decimal.
+
 ## Data model
 
 ```sql
@@ -253,27 +289,40 @@ CREATE TABLE crash_results (
 );
 ```
 
-`gameId` is the primary key, so reconnects and restarts never produce duplicate rows. The schema is created on first launch; the `ts_ms` column is added and backfilled idempotently for older databases.
+Every site uses this identical schema in its **own file** — the tables are never shared, so `gameId` only has to be unique within one site (Stake's are UUIDs, Shuffle's are increasing integers). `gameId` is the primary key, so reconnects and restarts never produce duplicate rows. The schema is created on first launch; the `ts_ms` column is added and backfilled idempotently for older databases.
 
 ## HTTP & WebSocket API
 
-The monitor exposes a tiny surface used by the bundled dashboards.
+The monitor exposes a tiny surface used by the bundled dashboards. Everything is scoped by a `site` key (`stake`, `shuffle`).
 
-**`GET /api/analytics?period=<period>`** — aggregate stats for one of `1h`, `3h`, `12h`, `1d`, `1w`, `1m`, `3m`, `6m`, `all`.
+**`GET /api/sites`** — the tab bar's source of truth: `[{ key, label, tab, url, enabled }, ...]`.
 
-**`GET /api/health`** — watchdog liveness. Returns `200` with `{ ok: true, staleSeconds, thresholdSeconds, lastResultMs, staleStrikes, watchdogEnabled, uptimeSeconds }`, or `503` with `ok: false` once the staleness window has passed. Suitable as a container healthcheck or uptime probe.
+**`GET /api/analytics?site=<site>&period=<period>`** — aggregate stats for one of `1h`, `3h`, `12h`, `1d`, `1w`, `1m`, `3m`, `6m`, `all`. `site` defaults to `stake`; an unknown one returns `400`.
 
-**WebSocket** (`ws://<host>:<port>/`) — clients receive three message shapes:
+**`GET /api/health`** — watchdog liveness. Returns `200`, or `503` once any enabled site has passed its staleness window. Top-level `staleSeconds` is the worst enabled site's, so a probe written against the single-site version keeps working:
 
 ```jsonc
-// 1. On connect: last 1000 results + current streaks
-{ "type": "history", "results": [ ... ], "streaks": { ... } }
+{
+  "ok": true, "staleSeconds": 26, "thresholdSeconds": 180,
+  "watchdogEnabled": true, "uptimeSeconds": 35,
+  "sites": {
+    "stake":   { "ok": true, "enabled": true, "staleSeconds": 26, "lastResultMs": 1786814197468, "staleStrikes": 0 },
+    "shuffle": { "ok": true, "enabled": true, "staleSeconds":  8, "lastResultMs": 1786814214855, "staleStrikes": 0 }
+  }
+}
+```
+
+**WebSocket** (`ws://<host>:<port>/`) — every client receives every site's stream, and each message carries the `site` it belongs to. There are three shapes:
+
+```jsonc
+// 1. On connect: one per site — last 1000 results + current streaks
+{ "type": "history", "site": "shuffle", "results": [ ... ], "streaks": { ... } }
 
 // 2. Live state on every frame (in_progress / starting / crash / start)
-{ "type": "live", "state": { "status": "in_progress", "multiplier": 1.42, "gameId": "..." } }
+{ "type": "live", "site": "stake", "state": { "status": "in_progress", "multiplier": 1.42, "gameId": "..." } }
 
 // 3. Persisted round
-{ "type": "result", "result": { "gameId": "...", "multiplier": 7.31, "ts_ms": 1716123456789, ... } }
+{ "type": "result", "site": "stake", "result": { "gameId": "...", "multiplier": 7.31, "ts_ms": 1716123456789, ... } }
 ```
 
 ## Running as a systemd service
@@ -303,23 +352,30 @@ The rendered `stake-crash.service` is gitignored, so your machine-specific paths
 ## Architecture
 
 ```
-┌──────────────┐   CDP    ┌──────────────┐   ws    ┌──────────────┐
-│  stake.com   │ ───────► │  capture.js  │ ──────► │  Dashboards  │
-│  (WebSocket) │          │  (Puppeteer) │         │ live / stats │
-└──────────────┘          └──────┬───────┘         └──────────────┘
-                                 │ better-sqlite3
-                                 ▼
-                          crash_results.db ──────► db-archives/
-                                 │ /api/analytics    (monthly dumps)
-                                 ▼
-                          Aggregated stats
+┌──────────────┐  CDP   ┌───────────────┐
+│  stake.com   │ ─────► │ monitor:stake │ ──► crash_results.db ─────────► db-archives/
+└──────────────┘        └───────┬───────┘                                 (monthly dumps)
+                                │
+┌──────────────┐  CDP   ┌───────┴────────┐                                ┌──────────────┐
+│ shuffle.com  │ ─────► │monitor:shuffle │ ──► shuffle_crash_results.db   │  Dashboards  │
+└──────────────┘        └───────┬────────┘         │                      │ live / stats │
+                                │                  └──► db-archives-shuffle/     ▲
+                                │  tagged {site} broadcasts + /api/analytics     │
+                                └────────────────────────────────────────────────┘
 ```
 
-1. Puppeteer launches headless Chromium with anti-detection flags and loads `stake.com/casino/games/crash`.
+| File | Role |
+|---|---|
+| `capture.js` | Wiring only: builds one monitor per site, serves the API/WebSocket, owns the watchdog ladder and shutdown |
+| `lib/sites.js` | Everything site-specific — the URL and the parser that normalizes one raw frame |
+| `lib/store.js` | One SQLite file: schema, migration, queries, analytics |
+| `lib/monitor.js` | One site's capture loop: browser, streaks, dedupe, staleness clock |
+
+1. For each site, Puppeteer launches headless Chromium with anti-detection flags and loads that site's crash page.
 2. A CDP session subscribes to `Network.webSocketFrameReceived`.
-3. `processCrashMessage()` filters frames for `__typename === 'MultiplayerCrash'`, broadcasts live state, and persists only `status === 'crash'` events.
-4. Express serves `public/` and exposes `/api/analytics` and `/api/health`; the `ws` server pushes live updates over the same HTTP server.
-5. Streak counters are seeded from the database at startup so they survive restarts.
+3. The site's `parseFrame()` normalizes each frame to `{ status, gameId, multiplier, timestamp }` — Stake's `MultiplayerCrash` events and Shuffle's `CrashEventPayload` events differ in shape, and this is the only place that difference lives. Live state is broadcast; only `status === 'crash'` is persisted.
+4. Express serves `public/` and exposes `/api/sites`, `/api/analytics` and `/api/health`; the `ws` server pushes site-tagged live updates over the same HTTP server.
+5. Streak counters are seeded from each database at startup so they survive restarts.
 
 ## Troubleshooting
 
@@ -342,7 +398,11 @@ The native module is built against one Node ABI, and the `node` on your `PATH` m
 
 ### Database is locked
 
-WAL mode allows concurrent readers (the archive script, the `sqlite3` CLI), but **never run two `capture.js` instances against the same DB** — `gameId` PK collisions will silently drop one writer's rows and streak counters will desync.
+WAL mode allows concurrent readers (the archive script, the `sqlite3` CLI), but **never run two `capture.js` instances against the same DB** — `gameId` PK collisions will silently drop one writer's rows and streak counters will desync. The same applies to pointing two sites at one file: give each its own path.
+
+### One site's tab is empty or stuck
+
+Check `/api/health` — it reports each site separately, so `sites.shuffle.staleSeconds` climbing past `thresholdSeconds` while Stake stays low means only that capture is down. The logs are prefixed per site (`[SHUFFLE] Capture error: ...`).
 
 > [!CAUTION]
-> Stake aggressively rate-limits scrapers. Running multiple instances from the same IP, or stripping the anti-detection flags, is likely to get the session blocked.
+> These sites aggressively rate-limit scrapers. Running multiple instances from the same IP, or stripping the anti-detection flags, is likely to get the session blocked.

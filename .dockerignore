@@ -4,6 +4,11 @@ crash_results.db
 crash_results.db-wal
 crash_results.db-shm
 crash_results.jsonl
+shuffle_crash_results.db
+shuffle_crash_results.db-wal
+shuffle_crash_results.db-shm
+db-archives
+db-archives-shuffle
 .env
 .env.local
 .git

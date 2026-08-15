@@ -7,12 +7,15 @@ if (window.Chart) {
 }
 
 // State Management
+//
+// Every site's feed arrives over the same socket, so the page keeps a full
+// state bag per site and only the active one is rendered. Switching tabs is
+// then instant and does not drop the other site's live updates.
 const State = {
-  results: [],
-  streaks: null,
+  site: null,
+  sites: {},
   chart: null,
   isAudioEnabled: false,
-  liveGame: { status: 'waiting', multiplier: 1.00, gameId: null },
   colors: {
     red: '#f6465d',
     orange: '#ff9f43',
@@ -22,9 +25,25 @@ const State = {
   }
 };
 
+function siteState(key) {
+  if (!State.sites[key]) {
+    State.sites[key] = {
+      results: [],
+      streaks: null,
+      liveGame: { status: 'waiting', multiplier: 1.00, gameId: null }
+    };
+  }
+  return State.sites[key];
+}
+
+const active = () => siteState(State.site);
+const isActive = (key) => key === State.site;
+
 // DOM Elements
 const Elements = {
   status: document.getElementById('status'),
+  siteTabs: document.getElementById('site-tabs'),
+  brandSub: document.getElementById('brand-sub'),
   resultsGrid: document.getElementById('results-grid'),
   statAverage: document.getElementById('stat-average'),
   statMedian: document.getElementById('stat-median'),
@@ -59,37 +78,51 @@ function connect() {
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
+    // Messages predating the multi-site protocol carried no site tag.
+    const key = data.site || 'stake';
     switch (data.type) {
-      case 'history':
-        State.results = data.results;
-        if (data.streaks) State.streaks = data.streaks;
-        renderAll();
+      case 'history': {
+        const s = siteState(key);
+        s.results = data.results;
+        if (data.streaks) s.streaks = data.streaks;
+        if (isActive(key)) renderAll();
         break;
+      }
       case 'result':
-        handleNewResult(data.result);
+        handleNewResult(key, data.result);
         break;
       case 'live':
-        updateLiveDisplay(data.state);
+        handleLive(key, data.state);
         break;
     }
   };
 }
 
-function handleNewResult(result) {
-  State.results.unshift(result);
-  if (State.results.length > 1000) State.results.pop();
+function handleNewResult(key, result) {
+  const s = siteState(key);
+  s.results.unshift(result);
+  if (s.results.length > 1000) s.results.pop();
 
-  State.streaks = {
+  s.streaks = {
     gamesSinceLast1x: result.gamesSinceLast1x,
     gamesSinceLast1000x: result.gamesSinceLast1000x,
     gamesSinceDouble1x: result.gamesSinceDouble1x
   };
+
+  if (!isActive(key)) return; // background site: keep the data, skip the DOM
 
   addNewPill(result);
   updateStats();
   updateChart();
 
   if (State.isAudioEnabled) playAlert(result.multiplier);
+}
+
+function handleLive(key, state) {
+  const s = siteState(key);
+  const prevStatus = s.liveGame.status; // captured before the store — the reset below needs the transition
+  s.liveGame = { ...state };
+  if (isActive(key)) updateLiveDisplay(state, prevStatus);
 }
 
 // UI Rendering Helpers
@@ -115,8 +148,9 @@ function animateMultiplier() {
   const dt = (now - lastFrameTime) / 1000;
   lastFrameTime = now;
 
-  const targetMultiplier = parseFloat(State.liveGame.multiplier) || 1.00;
-  const status = State.liveGame.status;
+  const liveGame = State.site ? active().liveGame : { status: 'waiting', multiplier: 1.00 };
+  const targetMultiplier = parseFloat(liveGame.multiplier) || 1.00;
+  const status = liveGame.status;
 
   if (status === 'in_progress') {
     // 1. Prediction: Always drift upwards at the base crash rate (~6% per second)
@@ -129,7 +163,7 @@ function animateMultiplier() {
     if (displayMultiplier < targetMultiplier) {
       displayMultiplier += (targetMultiplier - displayMultiplier) * 0.2;
     }
-    
+
     // 3. Safety: Don't let the prediction fly too far ahead of the last known server value
     // (cap at 0.1x ahead to maintain accuracy)
     if (displayMultiplier > targetMultiplier + 0.1) {
@@ -137,7 +171,7 @@ function animateMultiplier() {
     }
 
     Elements.liveMultiplier.textContent = formatMultiplier(displayMultiplier, 2);
-    
+
     // Update tier color dynamically during progress
     const tier = getColorClass(displayMultiplier);
     Elements.liveDisplay.classList.remove('tier-orange', 'tier-green', 'tier-purple', 'tier-turquoise');
@@ -146,52 +180,50 @@ function animateMultiplier() {
     // Reset or show the final result
     displayMultiplier = targetMultiplier;
     Elements.liveMultiplier.textContent = formatMultiplier(displayMultiplier, 2);
-    
+
     // Final color on crash
     if (status === 'crash') {
       Elements.liveDisplay.classList.remove('tier-orange', 'tier-green', 'tier-purple', 'tier-turquoise');
     }
   }
-  
+
   requestAnimationFrame(animateMultiplier);
 }
 
 requestAnimationFrame(animateMultiplier);
 
-function updateLiveDisplay(state) {
+function updateLiveDisplay(state, prevStatus = state.status) {
   const { status, multiplier } = state;
-  
+
   // Reset display when a new game starts
-  if (status === 'starting' || status === 'start' || (status === 'in_progress' && State.liveGame.status !== 'in_progress')) {
+  if (status === 'starting' || status === 'start' || (status === 'in_progress' && prevStatus !== 'in_progress')) {
     displayMultiplier = 1.00;
   }
-
-  State.liveGame.status = status;
-  State.liveGame.multiplier = multiplier;
 
   const statusLabels = {
     'in_progress': 'CRASHING...',
     'starting': 'PREPARING',
     'start': 'STARTING',
     'crash': 'CRASHED',
+    'waiting': 'WAITING',
     'pending': 'WAITING'
   };
 
   Elements.liveStatus.textContent = statusLabels[status] || status.toUpperCase();
-  
+
   const currentStatusClass = Elements.liveDisplay.classList.contains(status);
-  
+
   // Remove all current tier classes
   Elements.liveDisplay.classList.remove('tier-orange', 'tier-green', 'tier-purple', 'tier-turquoise');
-  
+
   // Update base status class
   Elements.liveDisplay.className = `live-display ${status}`;
-  
+
   // Apply initial tier class if in progress
   if (status === 'in_progress') {
     Elements.liveDisplay.classList.add(`tier-${getColorClass(multiplier)}`);
   }
-  
+
   // Apply crash impact effect if transitioning to crash
   if (status === 'crash' && !currentStatusClass) {
     Elements.liveDisplay.classList.add('crash-impact');
@@ -204,7 +236,7 @@ function addNewPill(result) {
   pill.className = `pill ${getColorClass(result.multiplier)} new`;
   pill.textContent = formatMultiplier(result.multiplier);
   pill.title = `Game: ${result.gameId}\n${new Date(result.timestamp).toLocaleString()}`;
-  
+
   Elements.resultsGrid.insertBefore(pill, Elements.resultsGrid.firstChild);
   if (Elements.resultsGrid.children.length > 200) {
     Elements.resultsGrid.removeChild(Elements.resultsGrid.lastChild);
@@ -212,18 +244,24 @@ function addNewPill(result) {
 }
 
 function updateStats() {
-  if (State.results.length === 0) return;
+  const s = active();
+  if (s.results.length === 0) {
+    [Elements.statAverage, Elements.statMedian, Elements.statMax,
+     Elements.statSince1x, Elements.statSince1000x, Elements.statSinceDouble1x]
+      .forEach(el => { el.textContent = '--'; });
+    return;
+  }
 
-  const multipliers = State.results.map(r => r.multiplier);
+  const multipliers = s.results.map(r => r.multiplier);
   const sorted = [...multipliers].sort((a, b) => a - b);
   const avg = multipliers.reduce((a, b) => a + b, 0) / multipliers.length;
   const median = sorted[Math.floor(sorted.length / 2)];
-  
+
   Elements.statAverage.textContent = avg.toFixed(2) + 'x';
   Elements.statMedian.textContent = median.toFixed(2) + 'x';
   Elements.statMax.textContent = formatMultiplier(sorted[sorted.length - 1]);
 
-  const streaks = State.streaks || State.results[0];
+  const streaks = s.streaks || s.results[0];
   Elements.statSince1x.textContent = streaks.gamesSinceLast1x ?? '--';
   Elements.statSince1000x.textContent = streaks.gamesSinceLast1000x ?? '--';
   Elements.statSinceDouble1x.textContent = streaks.gamesSinceDouble1x ?? '--';
@@ -231,10 +269,10 @@ function updateStats() {
 
 function updateChart() {
   const dist = { red: 0, orange: 0, green: 0, purple: 0, turquoise: 0 };
-  State.results.forEach(r => dist[getColorClass(r.multiplier)]++);
+  active().results.forEach(r => dist[getColorClass(r.multiplier)]++);
 
   const data = [dist.red, dist.orange, dist.green, dist.purple, dist.turquoise];
-  
+
   if (State.chart) {
     State.chart.data.datasets[0].data = data;
     State.chart.update('none');
@@ -267,14 +305,26 @@ function updateChart() {
 
 function renderAll() {
   Elements.resultsGrid.innerHTML = '';
-  State.results.slice(0, 200).forEach(r => {
+  active().results.slice(0, 200).forEach(r => {
     const pill = document.createElement('div');
     pill.className = `pill ${getColorClass(r.multiplier)}`;
     pill.textContent = formatMultiplier(r.multiplier);
+    pill.title = `Game: ${r.gameId}\n${new Date(r.timestamp).toLocaleString()}`;
     Elements.resultsGrid.appendChild(pill);
   });
   updateStats();
   updateChart();
+}
+
+// Repaints everything from the state already held for that site.
+function switchSite(key) {
+  State.site = key;
+  const site = SiteTabs.find(key);
+  Elements.brandSub.textContent = `live signal · ${site.tab || site.label}`;
+  // Snap to this site's current round instead of drifting up from the other one.
+  displayMultiplier = parseFloat(active().liveGame.multiplier) || 1.00;
+  renderAll();
+  updateLiveDisplay(active().liveGame);
 }
 
 // Audio Alerts
@@ -315,5 +365,11 @@ Elements.audioToggle.onclick = () => {
   Elements.audioToggle.classList.toggle('active', State.isAudioEnabled);
 };
 
-// Init
-connect();
+// Init — tabs first so the socket's very first messages land in a known site.
+(async function init() {
+  await SiteTabs.load();
+  const start = SiteTabs.initial();
+  SiteTabs.render(Elements.siteTabs, start, switchSite);
+  switchSite(start);
+  connect();
+})();

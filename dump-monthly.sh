@@ -1,45 +1,70 @@
 #!/usr/bin/env bash
 #
-# dump-monthly.sh — export crash_results.db into per-month archives.
+# dump-monthly.sh — export a site's crash database into per-month archives.
 #
-# For every calendar month (UTC) present in the DB it writes:
-#   db-archives/crash_YYYY-MM.csv           full rows for that month
-#   db-archives/crash_YYYY-MM.summary.json  stats for that month
+# Each monitored site has its own database and its own archive directory, so
+# their rounds never mix:
+#
+#   stake    crash_results.db          -> db-archives/
+#   shuffle  shuffle_crash_results.db  -> db-archives-shuffle/
+#
+# For every calendar month (UTC) present in a DB it writes, in that site's dir:
+#   crash_YYYY-MM.csv           full rows for that month
+#   crash_YYYY-MM.summary.json  stats for that month
 # plus two roll-ups:
-#   db-archives/index.csv                   one line per month
-#   db-archives/summary.json                every month summary in one file
+#   index.csv                   one line per month
+#   summary.json                every month summary in one file
 #
 # Re-running overwrites: previously generated files are wiped first, so stale
 # months never linger. With -m only the selected months are touched; the
 # roll-ups are always rebuilt from every summary in the output dir.
 #
 # Usage:
-#   ./dump-monthly.sh [-d DB] [-o OUTDIR] [-m YYYY-MM] [-z] [-h]
+#   ./dump-monthly.sh [-s SITE] [-d DB] [-o OUTDIR] [-m YYYY-MM] [-z] [-h]
 #
-#   -d DB       path to the SQLite file      (default: ./crash_results.db)
-#   -o OUTDIR   output directory             (default: ./db-archives)
+#   -s SITE     stake|shuffle (repeatable)  (default: every site with a DB on disk)
+#   -d DB       path to the SQLite file      (default: the site's own DB)
+#   -o OUTDIR   output directory             (default: the site's own archive dir)
 #   -m YYYY-MM  only this month (repeatable) (default: every month in the DB)
 #   -z          gzip the CSVs (-9) after writing
 #   -h          this help
 #
-# Read-only: the DB is opened readonly, so it is safe to run while capture.js
-# is live.
+# -d and -o describe a single archive, so they may only be combined with one
+# site. Read-only: the DB is opened readonly, so it is safe to run while
+# capture.js is live.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-DB="$SCRIPT_DIR/crash_results.db"
-OUTDIR="$SCRIPT_DIR/db-archives"
+# Site table — keep in sync with lib/sites.js (defaultDb) when adding a site.
+SITE_ORDER=(stake shuffle)
+declare -A SITE_DB=(
+  [stake]="crash_results.db"
+  [shuffle]="shuffle_crash_results.db"
+)
+declare -A SITE_OUT=(
+  [stake]="db-archives"
+  [shuffle]="db-archives-shuffle"
+)
+
+DB=""
+OUTDIR=""
+DB_SET=0
+OUT_SET=0
 GZIP=0
 MONTHS=()
+SITES=()
 
-usage() { sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+# Prints the contiguous comment block below the shebang, so the help text cannot
+# drift out of sync with a line range.
+usage() { awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "${BASH_SOURCE[0]}"; }
 
-while getopts ":d:o:m:zh" opt; do
+while getopts ":s:d:o:m:zh" opt; do
   case "$opt" in
-    d) DB="$OPTARG" ;;
-    o) OUTDIR="$OPTARG" ;;
+    s) SITES+=("$OPTARG") ;;
+    d) DB="$OPTARG"; DB_SET=1 ;;
+    o) OUTDIR="$OPTARG"; OUT_SET=1 ;;
     m) MONTHS+=("$OPTARG") ;;
     z) GZIP=1 ;;
     h) usage; exit 0 ;;
@@ -48,12 +73,37 @@ while getopts ":d:o:m:zh" opt; do
   esac
 done
 
-[[ -f "$DB" ]] || { echo "dump-monthly: no such database: $DB" >&2; exit 1; }
-
 for m in "${MONTHS[@]:-}"; do
   [[ -z "$m" || "$m" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]] ||
     { echo "dump-monthly: -m expects YYYY-MM, got '$m'" >&2; exit 2; }
 done
+
+for s in "${SITES[@]:-}"; do
+  [[ -z "$s" || -n "${SITE_DB[$s]:-}" ]] ||
+    { echo "dump-monthly: unknown site '$s' (known: ${SITE_ORDER[*]})" >&2; exit 2; }
+done
+
+# No -s: archive every site that actually has a database, so the monthly cron
+# picks a new site up on its own. With -d/-o the run describes one archive, and
+# stake stays the default for backwards compatibility.
+if ((${#SITES[@]} == 0)); then
+  if ((DB_SET || OUT_SET)); then
+    SITES=(stake)
+  else
+    for s in "${SITE_ORDER[@]}"; do
+      [[ -f "$SCRIPT_DIR/${SITE_DB[$s]}" ]] && SITES+=("$s")
+    done
+    ((${#SITES[@]})) || {
+      echo "dump-monthly: no site database found in $SCRIPT_DIR (looked for: ${SITE_DB[*]})" >&2
+      exit 1
+    }
+  fi
+fi
+
+if ((${#SITES[@]} > 1)) && ((DB_SET || OUT_SET)); then
+  echo "dump-monthly: -d/-o describe one archive — use a single -s with them" >&2
+  exit 2
+fi
 
 # --- locate a node that can load better-sqlite3 -------------------------------
 # The native module is built against one ABI; the `node` on PATH may be another
@@ -88,24 +138,6 @@ dump-monthly: could not find a node able to load better-sqlite3.
 EOF
   exit 1
 }
-
-mkdir -p "$OUTDIR"
-
-# Wipe previously generated files only — anything else in OUTDIR is left alone.
-# With -m the wipe is scoped to the selected months, so a monthly cron run does
-# not destroy the archives it is not regenerating.
-shopt -s nullglob
-if ((${#MONTHS[@]})); then
-  for m in "${MONTHS[@]}"; do
-    rm -f "$OUTDIR/crash_$m.csv" "$OUTDIR/crash_$m.csv.gz" "$OUTDIR/crash_$m.summary.json"
-  done
-else
-  rm -f "$OUTDIR"/crash_[0-9][0-9][0-9][0-9]-[0-9][0-9].csv \
-        "$OUTDIR"/crash_[0-9][0-9][0-9][0-9]-[0-9][0-9].csv.gz \
-        "$OUTDIR"/crash_[0-9][0-9][0-9][0-9]-[0-9][0-9].summary.json
-fi
-rm -f "$OUTDIR/index.csv" "$OUTDIR/summary.json"   # always rebuilt from every summary on disk
-shopt -u nullglob
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -347,27 +379,86 @@ if ((${#MONTHS[@]})); then
   MONTH_ARG="$(IFS=,; echo "${MONTHS[*]}")"
 fi
 
-echo "dump-monthly: $DB -> $OUTDIR  (node $("$NODE" -p 'process.versions.node'))"
-DUMP_PROJECT_DIR="$SCRIPT_DIR" DUMP_GZIP="$GZIP" "$NODE" "$WORK/dump.js" "$DB" "$OUTDIR" "$MONTH_ARG"
+# One site: wipe what this run is about to regenerate, dump, then gzip.
+dump_site() {
+  local site="$1" db="$2" outdir="$3"
 
-if ((GZIP)); then
-  # Only touch what this run wrote. Gzipping a month it did not regenerate
-  # would rename a file that the month's own summary already points at.
+  echo "dump-monthly: [$site] $db -> $outdir"
+  mkdir -p "$outdir" || return 1
+
+  # Wipe previously generated files only — anything else in the output dir is
+  # left alone. With -m the wipe is scoped to the selected months, so a monthly
+  # cron run does not destroy the archives it is not regenerating.
   shopt -s nullglob
   if ((${#MONTHS[@]})); then
-    csvs=()
+    local m
     for m in "${MONTHS[@]}"; do
-      [[ -f "$OUTDIR/crash_$m.csv" ]] && csvs+=("$OUTDIR/crash_$m.csv")
+      rm -f "$outdir/crash_$m.csv" "$outdir/crash_$m.csv.gz" "$outdir/crash_$m.summary.json"
     done
   else
-    csvs=("$OUTDIR"/crash_[0-9][0-9][0-9][0-9]-[0-9][0-9].csv)
+    rm -f "$outdir"/crash_[0-9][0-9][0-9][0-9]-[0-9][0-9].csv \
+          "$outdir"/crash_[0-9][0-9][0-9][0-9]-[0-9][0-9].csv.gz \
+          "$outdir"/crash_[0-9][0-9][0-9][0-9]-[0-9][0-9].summary.json
   fi
+  rm -f "$outdir/index.csv" "$outdir/summary.json"   # always rebuilt from every summary on disk
   shopt -u nullglob
-  if ((${#csvs[@]})); then
-    echo "dump-monthly: gzipping ${#csvs[@]} csv file(s)"
-    gzip -9 -f "${csvs[@]}"
+
+  # Explicit rather than leaning on errexit: this runs from an `if !` in the
+  # caller, and the exact errexit semantics inside a function called that way
+  # are too subtle to bet the other sites' archives on.
+  if ! DUMP_PROJECT_DIR="$SCRIPT_DIR" DUMP_GZIP="$GZIP" "$NODE" "$WORK/dump.js" "$db" "$outdir" "$MONTH_ARG"; then
+    return 1
   fi
+
+  if ((GZIP)); then
+    # Only touch what this run wrote. Gzipping a month it did not regenerate
+    # would rename a file that the month's own summary already points at.
+    local csvs=()
+    shopt -s nullglob
+    if ((${#MONTHS[@]})); then
+      local m
+      for m in "${MONTHS[@]}"; do
+        [[ -f "$outdir/crash_$m.csv" ]] && csvs+=("$outdir/crash_$m.csv")
+      done
+    else
+      csvs=("$outdir"/crash_[0-9][0-9][0-9][0-9]-[0-9][0-9].csv)
+    fi
+    shopt -u nullglob
+    if ((${#csvs[@]})); then
+      echo "dump-monthly: [$site] gzipping ${#csvs[@]} csv file(s)"
+      gzip -9 -f "${csvs[@]}"
+    fi
+  fi
+
+  du -sh "$outdir" 2>/dev/null | awk -v s="$site" '{print "dump-monthly: [" s "] " $1 " in " $2}'
+}
+
+echo "dump-monthly: sites: ${SITES[*]}  (node $("$NODE" -p 'process.versions.node'))"
+
+# One site's failure must not cost the others their archive — a cron run covers
+# every site, so failures are collected and reported at the end instead of
+# aborting the loop.
+FAILED=()
+for site in "${SITES[@]}"; do
+  db="$DB"
+  outdir="$OUTDIR"
+  ((DB_SET)) || db="$SCRIPT_DIR/${SITE_DB[$site]}"
+  ((OUT_SET)) || outdir="$SCRIPT_DIR/${SITE_OUT[$site]}"
+
+  if [[ ! -f "$db" ]]; then
+    echo "dump-monthly: [$site] no such database: $db" >&2
+    FAILED+=("$site")
+    continue
+  fi
+  if ! dump_site "$site" "$db" "$outdir"; then
+    echo "dump-monthly: [$site] failed" >&2
+    FAILED+=("$site")
+  fi
+done
+
+if ((${#FAILED[@]})); then
+  echo "dump-monthly: failed for: ${FAILED[*]}" >&2
+  exit 1
 fi
 
 echo "dump-monthly: done"
-du -sh "$OUTDIR" 2>/dev/null | awk '{print "dump-monthly: " $1 " in " $2}'

@@ -1,4 +1,7 @@
-# Example systemd unit for the Stake Crash Monitor.
+# Example systemd unit for the Crash Monitor (Stake.com + Shuffle.com).
+#
+# The unit is named stake-crash for continuity with existing deployments; one
+# process now supervises every site configured in lib/sites.js.
 #
 # Copy it, replace the three placeholders below, then install it:
 #
@@ -21,7 +24,7 @@
 # and the checkout would end up owned by root.
 
 [Unit]
-Description=Stake Crash Monitor
+Description=Crash Monitor (Stake.com + Shuffle.com)
 After=network-online.target
 Wants=network-online.target
 # Give up after 5 failed starts in 60s instead of crash-looping forever. A unit that

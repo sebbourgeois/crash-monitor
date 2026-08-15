@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>STAKE CRASH // LIVE</title>
+  <title>CRASH // LIVE</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -12,17 +12,19 @@
     <header>
       <h1>
         <span class="brand-block"></span>
-        STAKE&nbsp;CRASH
-        <span class="brand-sub">live&nbsp;signal</span>
+        CRASH
+        <span class="brand-sub" id="brand-sub">live&nbsp;signal</span>
       </h1>
       <div class="header-right">
-        <a href="/analytics.html" class="nav-link">Analytics →</a>
+        <a href="/analytics.html" class="nav-link" data-keep-site>Analytics →</a>
         <button id="audio-toggle" class="audio-toggle" title="Toggle Sound Alerts">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
         </button>
         <div id="status" class="status disconnected">Disconnected</div>
       </div>
     </header>
+
+    <div class="site-tabs" id="site-tabs"></div>
 
     <section class="live-section">
       <div class="live-display" id="live-display">
@@ -84,6 +86,7 @@
     </div>
   </div>
 
+  <script src="site-tabs.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

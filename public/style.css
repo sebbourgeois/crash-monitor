@@ -451,6 +451,54 @@ h2 {
 }
 
 /* ============================================================
+   SITE TABS (Stake.com / Shuffle.com)
+   ============================================================ */
+.site-tabs {
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+  border-bottom: 2px solid var(--line-bold);
+}
+.site-tabs button {
+  position: relative;
+  font-family: var(--disp);
+  font-size: 0.86rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  background: transparent;
+  border: 2px solid transparent;
+  border-bottom: none;
+  padding: 12px 24px;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.site-tabs button:hover { color: var(--ink); }
+/* The active tab breaks the rule it sits on, so it reads as the front sheet. */
+.site-tabs button.active {
+  color: #000;
+  background: var(--acid);
+  border-color: var(--acid);
+}
+.site-tabs button.active::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -2px;
+  height: 2px;
+  background: var(--acid);
+}
+/* capture disabled for this site — archived data only */
+.site-tabs .tab-offline {
+  display: inline-block;
+  width: 7px; height: 7px;
+  margin-left: 9px;
+  vertical-align: middle;
+  background: var(--red);
+}
+
+/* ============================================================
    ANALYTICS — period selector / table
    ============================================================ */
 .analytics-charts {
