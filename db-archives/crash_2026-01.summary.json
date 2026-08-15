@@ -1,0 +1,226 @@
+{
+  "month": "2026-01",
+  "generatedAt": "2026-08-15T15:38:45.280Z",
+  "source": "crash_results.db",
+  "csvFile": "crash_2026-01.csv",
+  "rows": 43597,
+  "firstResult": "2026-01-16T13:09:37.000Z",
+  "lastResult": "2026-01-31T23:59:45.000Z",
+  "coverage": {
+    "daysWithData": 16,
+    "largestGapSeconds": 46639,
+    "largestGapStart": "2026-01-27T09:12:54.000Z"
+  },
+  "multiplier": {
+    "min": 1,
+    "max": 40015.223,
+    "mean": 12.504761,
+    "median": 1.9701,
+    "p25": 1.321248,
+    "p75": 3.927017,
+    "p90": 9.806808,
+    "p95": 19.597897,
+    "p99": 96.608215
+  },
+  "distribution": [
+    {
+      "tier": "red",
+      "range": "< 1.01x",
+      "count": 844,
+      "percent": 1.9359
+    },
+    {
+      "tier": "orange",
+      "range": "1.01x - 1.99x",
+      "count": 21282,
+      "percent": 48.8153
+    },
+    {
+      "tier": "green",
+      "range": "2x - 99.99x",
+      "count": 21063,
+      "percent": 48.313
+    },
+    {
+      "tier": "purple",
+      "range": "100x - 999.99x",
+      "count": 353,
+      "percent": 0.8097
+    },
+    {
+      "tier": "turquoise",
+      "range": ">= 1000x",
+      "count": 55,
+      "percent": 0.1262
+    }
+  ],
+  "thresholds": [
+    {
+      "atLeast": 1.01,
+      "count": 42753,
+      "percent": 98.0641
+    },
+    {
+      "atLeast": 2,
+      "count": 21471,
+      "percent": 49.2488
+    },
+    {
+      "atLeast": 5,
+      "count": 8536,
+      "percent": 19.5793
+    },
+    {
+      "atLeast": 10,
+      "count": 4273,
+      "percent": 9.8011
+    },
+    {
+      "atLeast": 50,
+      "count": 858,
+      "percent": 1.968
+    },
+    {
+      "atLeast": 100,
+      "count": 408,
+      "percent": 0.9358
+    },
+    {
+      "atLeast": 1000,
+      "count": 55,
+      "percent": 0.1262
+    }
+  ],
+  "instantCrashes": {
+    "count": 844,
+    "percent": 1.9359
+  },
+  "resultsPerDay": [
+    {
+      "date": "2026-01-16",
+      "count": 1332
+    },
+    {
+      "date": "2026-01-17",
+      "count": 3080
+    },
+    {
+      "date": "2026-01-18",
+      "count": 2582
+    },
+    {
+      "date": "2026-01-19",
+      "count": 3026
+    },
+    {
+      "date": "2026-01-20",
+      "count": 3094
+    },
+    {
+      "date": "2026-01-21",
+      "count": 3029
+    },
+    {
+      "date": "2026-01-22",
+      "count": 2201
+    },
+    {
+      "date": "2026-01-23",
+      "count": 2390
+    },
+    {
+      "date": "2026-01-24",
+      "count": 3082
+    },
+    {
+      "date": "2026-01-25",
+      "count": 3027
+    },
+    {
+      "date": "2026-01-26",
+      "count": 3154
+    },
+    {
+      "date": "2026-01-27",
+      "count": 1398
+    },
+    {
+      "date": "2026-01-28",
+      "count": 2946
+    },
+    {
+      "date": "2026-01-29",
+      "count": 3074
+    },
+    {
+      "date": "2026-01-30",
+      "count": 3103
+    },
+    {
+      "date": "2026-01-31",
+      "count": 3079
+    }
+  ],
+  "topMultipliers": [
+    {
+      "gameId": "1af942ad-5019-4a98-a49f-27f7187365b6",
+      "multiplier": 40015.223,
+      "timestamp": "Tue, 20 Jan 2026 03:27:19 GMT",
+      "ts_ms": 1768879639000
+    },
+    {
+      "gameId": "935cb773-7d65-4933-ba9f-219f99c911ad",
+      "multiplier": 24984.092,
+      "timestamp": "Wed, 21 Jan 2026 01:42:20 GMT",
+      "ts_ms": 1768959740000
+    },
+    {
+      "gameId": "74524682-aa29-4ee9-94d1-90d32ac227ac",
+      "multiplier": 24177.324,
+      "timestamp": "Mon, 19 Jan 2026 12:05:45 GMT",
+      "ts_ms": 1768824345000
+    },
+    {
+      "gameId": "d1008091-0357-441f-9266-fbf0ee4419cb",
+      "multiplier": 20926.21,
+      "timestamp": "Sat, 17 Jan 2026 03:58:56 GMT",
+      "ts_ms": 1768622336000
+    },
+    {
+      "gameId": "6344cd47-cc8b-413c-86b5-fceea79bb64c",
+      "multiplier": 12170.981,
+      "timestamp": "Wed, 28 Jan 2026 05:58:08 GMT",
+      "ts_ms": 1769579888000
+    },
+    {
+      "gameId": "e665a6f4-54c8-4470-9f0e-f404088aaf25",
+      "multiplier": 11267.742,
+      "timestamp": "Sat, 24 Jan 2026 09:20:07 GMT",
+      "ts_ms": 1769246407000
+    },
+    {
+      "gameId": "d6f6e695-421f-4282-98c4-e6a29c6ff10a",
+      "multiplier": 7614.74,
+      "timestamp": "Wed, 21 Jan 2026 18:23:57 GMT",
+      "ts_ms": 1769019837000
+    },
+    {
+      "gameId": "932367c1-57b4-4654-9553-476b91ff79f7",
+      "multiplier": 6482.8213,
+      "timestamp": "Wed, 21 Jan 2026 23:29:54 GMT",
+      "ts_ms": 1769038194000
+    },
+    {
+      "gameId": "e1d8399f-6451-42e8-8c9a-988354641fa1",
+      "multiplier": 6371.6387,
+      "timestamp": "Sun, 25 Jan 2026 18:10:11 GMT",
+      "ts_ms": 1769364611000
+    },
+    {
+      "gameId": "aec65206-0893-452d-9573-c9f8f19c0436",
+      "multiplier": 6137.2793,
+      "timestamp": "Fri, 16 Jan 2026 22:31:55 GMT",
+      "ts_ms": 1768602715000
+    }
+  ]
+}
