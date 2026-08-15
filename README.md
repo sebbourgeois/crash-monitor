@@ -4,7 +4,7 @@
 
 **Real-time capture, storage and analysis of the Stake.com Crash game feed.**
 
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22.12-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![SQLite](https://img.shields.io/badge/storage-SQLite%20WAL-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](./DOCKER.md)
 [![Read only](https://img.shields.io/badge/mode-read--only-blue?style=flat-square)](#)
@@ -30,7 +30,7 @@ A headless browser attaches to the Crash page over the Chrome DevTools Protocol,
 
 ## Requirements
 
-- Node.js 18+ (20 LTS recommended)
+- Node.js 22.12+ (required by Puppeteer 25; enforced via `engines` in `package.json`)
 - A working Chromium — Puppeteer downloads its own by default; on Linux you may need a few shared libraries (see [Troubleshooting](#troubleshooting))
 - Or just Docker, if you'd rather not install anything else
 
