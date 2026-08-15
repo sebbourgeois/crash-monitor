@@ -8,6 +8,7 @@
 [![SQLite](https://img.shields.io/badge/storage-SQLite%20WAL-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](./DOCKER.md)
 [![Read only](https://img.shields.io/badge/mode-read--only-blue?style=flat-square)](#)
+[![Archive](https://img.shields.io/badge/archive-538k%20rounds-8b5cf6?style=flat-square)](#published-archive)
 
 </div>
 
@@ -22,7 +23,7 @@ A headless browser attaches to the Crash page over the Chrome DevTools Protocol,
 - **SQLite persistence** — Every round is written to `crash_results.db` via `better-sqlite3` in WAL mode, with an indexed millisecond timestamp for fast time-window queries.
 - **Live dashboard** (`/`) — WebSocket-pushed multiplier ticker, streak counters, recent-game pills, and a live distribution histogram.
 - **Analytics dashboard** (`/analytics.html`) — Period selector (`1h` → `6m` → `all`) over volume, mean, p90/p99, distribution, rare-event gaps, and Top 10 multipliers.
-- **Monthly archives** — `dump-monthly.sh` exports per-month CSV + JSON stats, ready to schedule with cron.
+- **Monthly archives** — `dump-monthly.sh` exports per-month CSV + JSON stats, ready to schedule with cron. The generated archives are committed to this repo, so it also ships as a [public dataset](#published-archive) of 538k+ rounds.
 - **Multi-channel notifications** — Console, Telegram, and desktop alerts for instant crashes (`< 1.01x`) and 1000x+ moon shots.
 - **Resilient** — In-process browser relaunch on disconnect, a stall watchdog for silent feed outages, and a `/api/health` endpoint for external monitoring.
 - **Deployable** — Ships with a `systemd` unit and a production-ready `Dockerfile` / `docker compose` setup with a persistent volume.
@@ -141,6 +142,73 @@ Run on the 1st, it archives the month that just ended. Run on any other day, it 
 
 > [!NOTE]
 > Months are bucketed in UTC. The script forces `TZ=UTC` so hosts on a local timezone still line up with the stored timestamps.
+
+## Published archive
+
+The `crash_results.db` file itself is gitignored, but the generated monthly archives **are committed** — so this repository doubles as a public dataset of the Stake Crash feed. Clone or fork it and you get every round captured so far, without running the capture yourself.
+
+**Repository:** [`github.com/sebbourgeois/stake-crash-archives`](https://github.com/sebbourgeois/stake-crash-archives)
+**Archive path:** [`db-archives/`](https://github.com/sebbourgeois/stake-crash-archives/tree/master/db-archives)
+
+| Month | Rounds | Days with data | Mean | Median | Max | Instant crash % |
+|---|---:|---:|---:|---:|---:|---:|
+| `2026-01` | 43,597 | 16 | 12.50x | 1.97x | 40,015x | 1.94 % |
+| `2026-02` | 84,786 | 28 | 11.96x | 1.99x | 61,866x | 1.82 % |
+| `2026-03` | 78,677 | 28 | 12.51x | 1.99x | 48,465x | 1.90 % |
+| `2026-04` | 53,208 | 20 | 11.00x | 1.97x | 47,670x | 2.00 % |
+| `2026-05` | 54,312 | 18 | 11.69x | 1.99x | 38,891x | 1.96 % |
+| `2026-06` | 91,544 | 30 | 17.06x | 1.99x | 399,026x | 1.97 % |
+| `2026-07` | 93,854 | 31 | 13.74x | 1.99x | 116,772x | 2.07 % |
+| `2026-08` | 38,124 | 14 | 20.18x | 1.97x | 396,866x | 2.02 % |
+| **Total** | **538,102** | — | **13.72x** | — | **399,026x** | **1.96 %** |
+
+Coverage starts `2026-01-16T13:09:37Z`; gaps within a month are capture downtime, not missing rounds in the game itself — each summary's `coverage.largestGapSeconds` tells you where. About 67 MB of CSV in total.
+
+### Getting the data
+
+```bash
+# whole archive, no history
+git clone --depth 1 git@github.com:sebbourgeois/stake-crash-archives.git
+
+# archives only, without the app or the git history
+git clone --depth 1 --filter=blob:none --sparse \
+  https://github.com/sebbourgeois/stake-crash-archives.git
+cd stake-crash-archives && git sparse-checkout set db-archives
+
+# or a single month, straight over HTTP
+curl -O https://raw.githubusercontent.com/sebbourgeois/stake-crash-archives/master/db-archives/crash_2026-07.csv
+```
+
+### What's in it
+
+| File | Contents |
+|---|---|
+| `crash_YYYY-MM.csv` | One row per round: `gameId,multiplier,timestamp,ts_ms,iso_utc,gamesSinceLast1x,gamesSinceLast1000x,gamesSinceDouble1x` |
+| `crash_YYYY-MM.summary.json` | Per-month stats — count, min/mean/median/p25–p99/max, tier distribution, cumulative counts at ≥1.01/2/5/10/50/100/1000x, per-day counts, top 10, coverage |
+| `index.csv` | One line per month, for a quick overview |
+| `summary.json` | Every month summary plus `totalRows` in one file |
+
+Load a month in three lines:
+
+```python
+import pandas as pd
+df = pd.read_csv("db-archives/crash_2026-07.csv", parse_dates=["iso_utc"])
+print(df.multiplier.describe(), (df.multiplier < 1.01).mean())
+```
+
+### Refreshing your fork
+
+The archives are regenerated from the DB by [`dump-monthly.sh`](#monthly-archives), so a fork that runs its own capture keeps the same layout:
+
+```bash
+./dump-last-month.sh          # rebuild the month that just ended
+git add db-archives && git commit -m "Archive $(date -u -d 'last month' +%Y-%m)"
+```
+
+Re-running overwrites in place, so `git diff` on `db-archives/` shows exactly which months changed.
+
+> [!NOTE]
+> The archive is provided as-is for research and learning. Multipliers are stored at full float precision (a round shown as `1.00x` on Stake may be `1.0089275` here) — truncate to 2 decimals if you want to match what the site displayed. Past rounds say nothing about future ones; this dataset is not a betting strategy.
 
 ## Dashboards
 
