@@ -278,17 +278,27 @@ The monitor exposes a tiny surface used by the bundled dashboards.
 
 ## Running as a systemd service
 
-A `stake-crash.service` unit is included for keeping the monitor alive across reboots:
+`stake-crash.service.example` is a template unit for keeping the monitor alive across reboots. Run this from the repo checkout, as the user the service should run as, with the same Node on `PATH` that you ran `npm install` with:
 
 ```bash
-sudo cp stake-crash.service /etc/systemd/system/stake-crash.service
+sed -e "s|__USER__|$USER|g" \
+    -e "s|__WORKDIR__|$PWD|g" \
+    -e "s|__NODE__|$(command -v node)|g" \
+    stake-crash.service.example | sudo tee /etc/systemd/system/stake-crash.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now stake-crash
 journalctl -u stake-crash -f
 ```
 
+Then check `curl -s localhost:3000/api/health` — a `200` with a low `staleSeconds` means frames are actually landing, which `systemctl status` alone does not tell you.
+
 > [!IMPORTANT]
-> The unit ships with paths hardcoded for the original author's environment (`/home/sb/...`, nvm-installed Node). Edit `User`, `WorkingDirectory`, and `ExecStart` before enabling.
+> `ExecStart` must point at an absolute `node` path on the **same Node major that built `node_modules`**. `better-sqlite3` is a native addon, so installing deps under a different major makes the unit die at startup with `ERR_DLOPEN_FAILED` / `NODE_MODULE_VERSION` mismatch. After a Node upgrade, run `npm rebuild better-sqlite3` and update the path.
+
+> [!NOTE]
+> nvm is a shell function and does not exist under systemd, so a bare `node` will not resolve — the `command -v node` above expands to the versioned binary (`~/.nvm/versions/node/vXX/bin/node`), which is what you want. Be aware that a later `nvm install` of a new default silently breaks that pin.
+
+The rendered `stake-crash.service` is gitignored, so your machine-specific paths stay out of the repo — edit the installed copy under `/etc/systemd/system/`, or keep a local one alongside the `.example`.
 
 ## Architecture
 
