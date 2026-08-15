@@ -27,6 +27,9 @@ There is no test suite, linter, or build step — `capture.js` runs directly und
 | `TELEGRAM_ENABLED` | `false` | Only critical events (instant crash, 1000x+) are sent |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | Required when Telegram is on |
 | `DESKTOP_NOTIFICATIONS_ENABLED` | `false` | Uses `node-notifier` |
+| `WATCHDOG_ENABLED` | `true` | Stall watchdog; `false` disables both tiers |
+| `WATCHDOG_STALE_MS` | `180000` | No new row for this long = stalled |
+| `WATCHDOG_CHECK_MS` | `30000` | Staleness poll interval |
 
 ## Architecture
 
@@ -34,9 +37,20 @@ Single entry point: `capture.js`. The file does five things in this order, and t
 
 1. **Schema + on-startup migration.** Opens `crash_results.db` in WAL mode, creates `crash_results` if missing, then runs `migrateTsMs()` — adds `ts_ms INTEGER` if absent, backfills it from `timestamp` for any rows where it's NULL, and creates `idx_ts_ms`. This makes period queries in `buildAnalytics()` cheap. Any schema change should follow the same idempotent ADD-COLUMN-then-backfill pattern, not a separate migration file.
 2. **Streak seeding (`seedStreaksFromDb`).** Recomputes `gamesSinceLast1x`, `gamesSinceLast1000x`, `gamesSinceDouble1x` from the DB so counters survive restarts. Without this, streaks would reset to 0 on every process start.
-3. **Express + WS server (`setupServer`).** Only when `DASHBOARD_ENABLED`. Serves `public/`, exposes `GET /api/analytics?period=…`, and runs a `ws` server on the same HTTP server.
-4. **Puppeteer + CDP loop (`captureWithRetry` → `captureCrashData`).** Headless Chromium with `--disable-blink-features=AutomationControlled` and a spoofed UA. On `page.error` or `browser.disconnected`, throws to `captureWithRetry`, which closes the browser and re-enters after a 10s backoff (guarded by `isRestarting` so concurrent failures don't multiply restarts).
-5. **Per-frame handler (`processCrashMessage`).** The hot path — see below.
+3. **Express + WS server (`setupServer`).** Only when `DASHBOARD_ENABLED`. Serves `public/`, exposes `GET /api/analytics?period=…` and `GET /api/health` (watchdog staleness; `503` once stale), and runs a `ws` server on the same HTTP server.
+4. **Stall watchdog (`startWatchdog`).** Only liveness signal that catches a silent stall — see below.
+5. **Puppeteer + CDP loop (`captureWithRetry` → `captureCrashData`).** Headless Chromium with `--disable-blink-features=AutomationControlled` and a spoofed UA. `captureWithRetry` is a single serialized `for(;;)` loop, so exactly one browser is ever alive. `captureCrashData` ends its run by awaiting a promise that `page.error` / `browser.disconnected` reject and `restartCapture()` resolves — routing those through the promise keeps them inside the loop's `catch` instead of escaping to `uncaughtException`. Errors back off 10s; a watchdog abort relaunches after 1s.
+6. **Per-frame handler (`processCrashMessage`).** The hot path — see below.
+
+### Stall watchdog (`startWatchdog`)
+
+The failure mode this exists for: the process stays alive and the event loop keeps ticking, but Stake stops delivering websocket frames. Nothing throws, so neither `captureWithRetry` nor systemd notices — the DB holds a 7.8h gap (2026-07-20) and a 54h gap (2026-08-13) that both happened inside one long-lived PID.
+
+- Liveness is `lastResultMs`, bumped by `noteResult()` on every persisted crash and by `noteCaptureStart()` at boot and on each (re)launch, so a cold start or a relaunch always gets a full window of grace.
+- `staleStrikes` is cleared **only** by `noteResult()`. If the interval also cleared it, tier 1's `noteCaptureStart()` would reset the count on the next tick and it could never escalate.
+- Strike 1 → `restartCapture()` (browser relaunch, console/desktop only). Strike 2 → `cleanup(1)`; the non-zero code is what marks it a fault for the supervisor, so don't "tidy" it to 0.
+- `cleanup(code)` is idempotent via `isShuttingDown`, and `uncaughtException`/`unhandledRejection` now log the error and exit 1 instead of being passed straight in as the exit code.
+- Threshold rationale, measured over 90 days: 57 gaps > 3min, 12 > 5min, 7 > 6min, and nothing between 6 and 10min. Tier 2 needs two windows (~6min), which in that history only ever means a real outage.
 
 ### CDP frame handling (`processCrashMessage`)
 
@@ -111,6 +125,7 @@ CREATE TABLE crash_results (
 
 ## Things that look weird but aren't
 
-- `cleanup()` is wired to `uncaughtException` and `unhandledRejection` — the process exits on *any* unhandled error rather than trying to recover. The browser-level resilience in `captureWithRetry` only catches errors thrown synchronously from `captureCrashData` or via the `page.error` / `browser.disconnected` handlers.
+- `cleanup()` is still wired to `uncaughtException` and `unhandledRejection` — the process exits on *any* unhandled error rather than trying to recover. That is now a last-resort backstop: `page.error` and `browser.disconnected` are recovered in-process by `captureWithRetry`, and a silent stall is handled by the watchdog. `Restart=always` covers what's left.
+- `closeBrowser()` calls `removeAllListeners('disconnected')` before `close()`. Without it, an intentional teardown fires the handler and rejects a promise that has already settled — harmless today, but it makes the shutdown path depend on settle-order.
 - `migrate_to_sqlite.js` used to exist for one-time JSONL→SQLite import; it has been removed. Don't add it back — the schema migration in `capture.js` (`migrateTsMs`) is the only ongoing migration path.
 - The `processedGames` Set is *also* used as a dedupe even though the DB has `INSERT OR IGNORE` on `gameId`. The Set short-circuits before `insertResult.run()` and before incrementing streak counters — removing it would cause duplicate streak increments on the same `gameId` within a single process.

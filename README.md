@@ -64,9 +64,38 @@ All configuration is via environment variables (a `.env` file is loaded automati
 | `TELEGRAM_BOT_TOKEN` | — | Bot token from [@BotFather](https://t.me/BotFather) |
 | `TELEGRAM_CHAT_ID` | — | Target chat ID for alerts |
 | `DESKTOP_NOTIFICATIONS_ENABLED` | `false` | Native desktop alerts via `node-notifier` |
+| `WATCHDOG_ENABLED` | `true` | Stall watchdog (see below) |
+| `WATCHDOG_STALE_MS` | `180000` | How long without a new result counts as stalled |
+| `WATCHDOG_CHECK_MS` | `30000` | How often staleness is checked |
 
 > [!TIP]
 > To find your `TELEGRAM_CHAT_ID`, message your bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy the `chat.id` field.
+
+## Stall watchdog
+
+The capture can stall silently: the process stays alive and the event loop keeps
+running, but Stake stops delivering websocket frames. Nothing throws, so neither
+the retry loop nor the supervisor notices — this repo's own DB has a 7.8 h gap
+and a 54 h gap that happened inside a single long-lived PID.
+
+"No row written for `WATCHDOG_STALE_MS`" is therefore the liveness signal, and
+the watchdog escalates on it:
+
+1. **Relaunch the browser** in-process, and give it one more full window.
+2. **Exit with status 1** if that window also passes with no result, so the
+   supervisor (`Restart=always` under systemd, `restart: unless-stopped` under
+   Compose) rebuilds the process from scratch.
+
+Tier 1 is routine self-healing and only logs; tier 2 sends a Telegram alert.
+`GET /api/health` exposes the same signal for external monitoring — it returns
+`200` with `{ ok: true, staleSeconds, … }`, or `503` once the window is passed.
+
+> [!NOTE]
+> Threshold trade-off, measured over 90 days of this DB: gaps longer than 3 min
+> happen ~57 times, longer than 5 min 12 times, longer than 6 min 7 times — and
+> every gap past 6 min was a real outage. So the default fires a cheap browser
+> relaunch every other day or so and only restarts the service when it matters.
+> Raise `WATCHDOG_STALE_MS` to `300000` if you would rather it stay quieter.
 
 ## Dashboards
 

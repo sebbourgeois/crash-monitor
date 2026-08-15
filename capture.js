@@ -67,12 +67,33 @@ const DESKTOP_NOTIFICATIONS_ENABLED = process.env.DESKTOP_NOTIFICATIONS_ENABLED 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+// Watchdog. The capture stalls silently: the process stays alive and the event
+// loop keeps ticking, but Stake stops delivering websocket frames, so nothing
+// ever throws and neither captureWithRetry nor systemd notices. Observed twice
+// in the DB — a 7.8h gap on 2026-07-20 and a 54h gap starting 2026-08-13, both
+// inside a single long-lived PID. "No row written for STALE_MS" is the only
+// reliable liveness signal, so the watchdog escalates on it: first relaunch the
+// browser in-process, then exit non-zero so the supervisor (systemd
+// Restart=always / docker restart policy) rebuilds the whole process.
+const WATCHDOG_ENABLED = process.env.WATCHDOG_ENABLED !== 'false';
+const WATCHDOG_STALE_MS = Number(process.env.WATCHDOG_STALE_MS) || 3 * 60 * 1000;
+const WATCHDOG_CHECK_MS = Number(process.env.WATCHDOG_CHECK_MS) || 30 * 1000;
+
 const wsClients = new Set();
 let gamesSinceLast1x = 0;
 let gamesSinceLast1000x = 0;
 let gamesSinceDouble1x = 0;
 let lastWas1x = false;
 let currentGameState = { status: 'waiting', multiplier: 1.00, gameId: null };
+
+// Watchdog state. lastResultMs starts at boot rather than at the DB's newest
+// row so a cold start (or a restart mid-outage) gets a full window of grace
+// before the watchdog can fire. staleStrikes is only ever cleared by a real
+// result, which is what makes the escalation ladder work.
+let lastResultMs = Date.now();
+let staleStrikes = 0;
+const noteResult = () => { lastResultMs = Date.now(); staleStrikes = 0; };
+const noteCaptureStart = () => { lastResultMs = Date.now(); };
 
 function seedStreaksFromDb() {
   const total = db.prepare('SELECT COUNT(*) AS n FROM crash_results').get().n;
@@ -302,6 +323,21 @@ function setupServer() {
 
   app.use(express.static(path.join(__dirname, 'public')));
 
+  // Liveness for external monitoring — same staleness signal the watchdog uses.
+  app.get('/api/health', (req, res) => {
+    const staleMs = Date.now() - lastResultMs;
+    const stale = staleMs >= WATCHDOG_STALE_MS;
+    res.status(stale ? 503 : 200).json({
+      ok: !stale,
+      staleSeconds: Math.round(staleMs / 1000),
+      thresholdSeconds: Math.round(WATCHDOG_STALE_MS / 1000),
+      lastResultMs,
+      staleStrikes,
+      watchdogEnabled: WATCHDOG_ENABLED,
+      uptimeSeconds: Math.round(process.uptime())
+    });
+  });
+
   app.get('/api/analytics', (req, res) => {
     try {
       const period = typeof req.query.period === 'string' ? req.query.period : 'all';
@@ -328,24 +364,79 @@ function setupServer() {
   return server;
 }
 
-let browser = null;
-let isRestarting = false;
+const RETRY_DELAY_MS = 10000;
+const RELAUNCH_DELAY_MS = 1000;
 
+let browser = null;
+let abortCapture = null; // set while a capture run is live; ends the run without an error
+
+const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+
+async function closeBrowser(b) {
+  if (!b) return;
+  // Drop 'disconnected' first: closing the browser fires it, and the handler
+  // would otherwise reject the (already settled) run promise on the way out.
+  b.removeAllListeners('disconnected');
+  await b.close().catch(() => {});
+}
+
+// One serialized supervisor loop. captureCrashData only returns when
+// restartCapture() aborts it; anything else lands in the catch. Either way the
+// browser is torn down and relaunched, so there is exactly one browser alive.
 async function captureWithRetry() {
-  try {
-    await captureCrashData();
-  } catch (err) {
-    console.error('Capture error:', err.message);
-    if (!isRestarting) {
-      isRestarting = true;
-      console.log('Attempting to restart browser in 10s...');
-      if (browser) await browser.close().catch(() => {});
-      setTimeout(() => {
-        isRestarting = false;
-        captureWithRetry();
-      }, 10000);
+  for (;;) {
+    let failed = false;
+    try {
+      await captureCrashData();
+    } catch (err) {
+      failed = true;
+      console.error('Capture error:', err.message);
     }
+    abortCapture = null;
+    await closeBrowser(browser);
+    browser = null;
+
+    const delay = failed ? RETRY_DELAY_MS : RELAUNCH_DELAY_MS;
+    console.log(`Restarting browser in ${delay / 1000}s...`);
+    await sleep(delay);
+    noteCaptureStart(); // the fresh run gets a full stale window before escalation
   }
+}
+
+// Ends the current capture run; the loop above relaunches the browser.
+function restartCapture() {
+  const abort = abortCapture;
+  abortCapture = null;
+  if (abort) abort();
+  else closeBrowser(browser); // still starting up — kill it so page.goto rejects
+}
+
+function startWatchdog() {
+  if (!WATCHDOG_ENABLED) return;
+  console.log(`Watchdog: restart if no crash result for ${Math.round(WATCHDOG_STALE_MS / 1000)}s`);
+  const timer = setInterval(async () => {
+    const staleMs = Date.now() - lastResultMs;
+    if (staleMs < WATCHDOG_STALE_MS) return;
+
+    staleStrikes++;
+    const mins = (staleMs / 60000).toFixed(1);
+    if (staleStrikes === 1) {
+      // Not critical: over 90 days of history, 57 gaps exceeded 3 min but only
+      // 7 exceeded 6 min, so tier 1 is mostly routine self-healing and must not
+      // spam Telegram. Only the escalation below is worth waking someone for.
+      console.error(`\n[WATCHDOG] No crash result for ${mins} min — relaunching browser.`);
+      notify('⚠️ Capture stalled', `No result for ${mins} min — relaunching browser`, false);
+      noteCaptureStart(); // hold off escalation for one more full window
+      restartCapture();
+    } else {
+      // Stop ticking first — cleanup() awaits the Telegram round-trip, and a
+      // second tick in that window would re-send the alert.
+      clearInterval(timer);
+      console.error(`\n[WATCHDOG] Still no crash result after a browser relaunch (${mins} min) — exiting for a service restart.`);
+      await notify('⚠️ Capture stalled', 'Still no result after a browser relaunch — exiting so the service restarts', true);
+      await cleanup(1);
+    }
+  }, WATCHDOG_CHECK_MS);
 }
 
 async function captureCrashData() {
@@ -358,10 +449,6 @@ async function captureCrashData() {
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
   const processedGames = new Set();
-
-  // Handle browser/page crashes
-  page.on('error', err => { throw err; });
-  browser.on('disconnected', () => { if (!isRestarting) throw new Error('Browser disconnected'); });
 
   await page.goto(STAKE_CRASH_URL, { waitUntil: 'networkidle2', timeout: 60000 });
 
@@ -381,8 +468,17 @@ async function captureCrashData() {
   await client.send('Network.enable');
 
   console.log('Monitoring crash game results...');
-  
-  await new Promise(() => {}); // Keep alive
+  noteCaptureStart();
+
+  // Keep the run alive until it is aborted (resolve) or the browser/page dies
+  // (reject). Routing browser and page failures through this promise keeps them
+  // inside captureWithRetry's catch — thrown from the listener they would land
+  // in uncaughtException and take the whole process down instead.
+  await new Promise((resolve, reject) => {
+    abortCapture = resolve;
+    page.on('error', reject);
+    browser.on('disconnected', () => reject(new Error('Browser disconnected')));
+  });
 }
 
 // Stake's UI truncates to 2 decimals (e.g. 1.0089 → "1.00x", not "1.01x"). Match that.
@@ -438,20 +534,33 @@ function processCrashMessage(data, processedGames) {
   console.log(`\r\x1b[K[CRASH] ${multStr} | Game: ${gameId} | Since 1x: ${result.gamesSinceLast1x} | Since 1000x: ${result.gamesSinceLast1000x}`);
 
   insertResult.run(result);
+  noteResult();
   broadcast({ type: 'result', result });
 }
 
-async function cleanup() {
+let isShuttingDown = false;
+
+// Exit code matters: 1 tells the supervisor this was a fault, not a clean stop.
+async function cleanup(code = 0) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   console.log('\nShutting down...');
-  if (browser) await browser.close().catch(() => {});
+  await closeBrowser(browser);
   try { db.close(); } catch {}
-  process.exit(0);
+  process.exit(code);
 }
 
-process.on('SIGINT', cleanup);
-process.on('SIGTERM', cleanup);
-process.on('uncaughtException', cleanup);
-process.on('unhandledRejection', cleanup);
+process.on('SIGINT', () => cleanup(0));
+process.on('SIGTERM', () => cleanup(0));
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  cleanup(1);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+  cleanup(1);
+});
 
 setupServer();
+startWatchdog();
 captureWithRetry();
