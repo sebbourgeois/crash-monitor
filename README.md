@@ -1,6 +1,17 @@
+<div align="center">
+
 # Stake Crash Monitor
 
-Real-time monitor for the Stake.com Crash game. A headless browser attaches to the page over the Chrome DevTools Protocol, intercepts the live `MultiplayerCrash` WebSocket stream, persists every round to SQLite, and serves a live + analytics dashboard.
+**Real-time capture, storage and analysis of the Stake.com Crash game feed.**
+
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
+[![SQLite](https://img.shields.io/badge/storage-SQLite%20WAL-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](./DOCKER.md)
+[![Read only](https://img.shields.io/badge/mode-read--only-blue?style=flat-square)](#)
+
+</div>
+
+A headless browser attaches to the Crash page over the Chrome DevTools Protocol, intercepts the live `MultiplayerCrash` WebSocket stream, persists every round to SQLite, and serves a live dashboard plus a period-windowed analytics dashboard.
 
 > [!NOTE]
 > This tool is **read-only**. It observes the public crash feed without placing bets, clicking, or otherwise interacting with the page. It is intended for statistical analysis, research, and learning.
@@ -11,8 +22,9 @@ Real-time monitor for the Stake.com Crash game. A headless browser attaches to t
 - **SQLite persistence** — Every round is written to `crash_results.db` via `better-sqlite3` in WAL mode, with an indexed millisecond timestamp for fast time-window queries.
 - **Live dashboard** (`/`) — WebSocket-pushed multiplier ticker, streak counters, recent-game pills, and a live distribution histogram.
 - **Analytics dashboard** (`/analytics.html`) — Period selector (`1h` → `6m` → `all`) over volume, mean, p90/p99, distribution, rare-event gaps, and Top 10 multipliers.
+- **Monthly archives** — `dump-monthly.sh` exports per-month CSV + JSON stats, ready to schedule with cron.
 - **Multi-channel notifications** — Console, Telegram, and desktop alerts for instant crashes (`< 1.01x`) and 1000x+ moon shots.
-- **Resilient** — Auto-restarts the browser on disconnect; graceful shutdown on `SIGINT` / `SIGTERM`.
+- **Resilient** — In-process browser relaunch on disconnect, a stall watchdog for silent feed outages, and a `/api/health` endpoint for external monitoring.
 - **Deployable** — Ships with a `systemd` unit and a production-ready `Dockerfile` / `docker compose` setup with a persistent volume.
 
 ## Requirements
@@ -24,7 +36,7 @@ Real-time monitor for the Stake.com Crash game. A headless browser attaches to t
 ## Quick start
 
 ```bash
-git clone <your-fork-url> stake-crash-archives
+git clone git@github.com:sebbourgeois/stake-crash-archives.git
 cd stake-crash-archives
 npm install
 cp .env.example .env       # all variables are optional; defaults are sane
@@ -73,29 +85,62 @@ All configuration is via environment variables (a `.env` file is loaded automati
 
 ## Stall watchdog
 
-The capture can stall silently: the process stays alive and the event loop keeps
-running, but Stake stops delivering websocket frames. Nothing throws, so neither
-the retry loop nor the supervisor notices — this repo's own DB has a 7.8 h gap
-and a 54 h gap that happened inside a single long-lived PID.
+The capture can stall silently: the process stays alive and the event loop keeps running, but Stake stops delivering websocket frames. Nothing throws, so neither the retry loop nor the supervisor notices — this repo's own DB has a 7.8 h gap and a 54 h gap that happened inside a single long-lived PID.
 
-"No row written for `WATCHDOG_STALE_MS`" is therefore the liveness signal, and
-the watchdog escalates on it:
+"No row written for `WATCHDOG_STALE_MS`" is therefore the liveness signal, and the watchdog escalates on it:
 
 1. **Relaunch the browser** in-process, and give it one more full window.
-2. **Exit with status 1** if that window also passes with no result, so the
-   supervisor (`Restart=always` under systemd, `restart: unless-stopped` under
-   Compose) rebuilds the process from scratch.
+2. **Exit with status 1** if that window also passes with no result, so the supervisor (`Restart=always` under systemd, `restart: unless-stopped` under Compose) rebuilds the process from scratch.
 
 Tier 1 is routine self-healing and only logs; tier 2 sends a Telegram alert.
-`GET /api/health` exposes the same signal for external monitoring — it returns
-`200` with `{ ok: true, staleSeconds, … }`, or `503` once the window is passed.
 
 > [!NOTE]
-> Threshold trade-off, measured over 90 days of this DB: gaps longer than 3 min
-> happen ~57 times, longer than 5 min 12 times, longer than 6 min 7 times — and
-> every gap past 6 min was a real outage. So the default fires a cheap browser
-> relaunch every other day or so and only restarts the service when it matters.
-> Raise `WATCHDOG_STALE_MS` to `300000` if you would rather it stay quieter.
+> Threshold trade-off, measured over 90 days of this DB: gaps longer than 3 min happen ~57 times, longer than 5 min 12 times, longer than 6 min 7 times — and every gap past 6 min was a real outage. So the default fires a cheap browser relaunch every other day or so and only restarts the service when it matters. Raise `WATCHDOG_STALE_MS` to `300000` if you would rather it stay quieter.
+
+## Monthly archives
+
+`dump-monthly.sh` exports the database into one CSV + one stats file per calendar month (UTC) under `db-archives/`. It opens the DB **read-only**, so it is safe to run while the capture is live.
+
+```bash
+./dump-monthly.sh                 # every month in the DB
+./dump-monthly.sh -m 2026-07 -z   # one month only, gzip the CSV
+./dump-monthly.sh -d other.db -o /mnt/backup
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `-d DB` | `./crash_results.db` | Path to the SQLite file |
+| `-o OUTDIR` | `./db-archives` | Output directory |
+| `-m YYYY-MM` | every month | Only this month; repeatable |
+| `-z` | off | Gzip the generated CSVs (`-9`) |
+| `-h` | — | Show help |
+
+Each run writes:
+
+| File | Contents |
+|---|---|
+| `crash_YYYY-MM.csv` | Every row for that month, plus an `iso_utc` column next to the raw `timestamp` / `ts_ms` |
+| `crash_YYYY-MM.summary.json` | Row count, first/last result, min/mean/median/p25–p99/max, tier distribution, cumulative counts at ≥1.01/2/5/10/50/100/1000x, per-day counts, top 10 multipliers, and coverage (days with data, largest gap between rounds) |
+| `index.csv` | One line per archived month |
+| `summary.json` | Every month summary in a single file |
+
+Re-running overwrites: previously generated files are wiped first, so stale months never linger. With `-m` the wipe is scoped to the selected months, and the roll-ups are rebuilt from every summary present in the output directory.
+
+> [!IMPORTANT]
+> The script needs a Node that can load the compiled `better-sqlite3` binding. It probes `$NODE_BIN`, then `PATH`, then any nvm-installed versions, and uses the first that works — so a mismatched `node` on `PATH` is not a problem. If none work, run `npm rebuild better-sqlite3` or set `NODE_BIN=/path/to/node`.
+
+### Scheduling with cron
+
+`dump-last-month.sh` is the cron entry point: it resolves the previous calendar month and hands it to `dump-monthly.sh`, leaving all other months untouched.
+
+```cron
+5 0 1 * * /path/to/stake-crash-archives/dump-last-month.sh >> /path/to/stake-crash-archives/dump-monthly.log 2>&1
+```
+
+Run on the 1st, it archives the month that just ended. Run on any other day, it still targets the previous calendar month, so a missed run retried by hand does the same thing. Override the target with `MONTH=2026-03 ./dump-last-month.sh` to backfill, and pass extra flags straight through (`./dump-last-month.sh -z`).
+
+> [!NOTE]
+> Months are bucketed in UTC. The script forces `TZ=UTC` so hosts on a local timezone still line up with the stored timestamps.
 
 ## Dashboards
 
@@ -146,7 +191,9 @@ CREATE TABLE crash_results (
 
 The monitor exposes a tiny surface used by the bundled dashboards.
 
-**`GET /api/analytics?period=<period>`** — returns aggregate stats for one of `1h`, `3h`, `12h`, `1d`, `1w`, `1m`, `3m`, `6m`, `all`.
+**`GET /api/analytics?period=<period>`** — aggregate stats for one of `1h`, `3h`, `12h`, `1d`, `1w`, `1m`, `3m`, `6m`, `all`.
+
+**`GET /api/health`** — watchdog liveness. Returns `200` with `{ ok: true, staleSeconds, thresholdSeconds, lastResultMs, staleStrikes, watchdogEnabled, uptimeSeconds }`, or `503` with `ok: false` once the staleness window has passed. Suitable as a container healthcheck or uptime probe.
 
 **WebSocket** (`ws://<host>:<port>/`) — clients receive three message shapes:
 
@@ -184,8 +231,8 @@ journalctl -u stake-crash -f
 └──────────────┘          └──────┬───────┘         └──────────────┘
                                  │ better-sqlite3
                                  ▼
-                          crash_results.db
-                                 │ /api/analytics
+                          crash_results.db ──────► db-archives/
+                                 │ /api/analytics    (monthly dumps)
                                  ▼
                           Aggregated stats
 ```
@@ -193,7 +240,7 @@ journalctl -u stake-crash -f
 1. Puppeteer launches headless Chromium with anti-detection flags and loads `stake.com/casino/games/crash`.
 2. A CDP session subscribes to `Network.webSocketFrameReceived`.
 3. `processCrashMessage()` filters frames for `__typename === 'MultiplayerCrash'`, broadcasts live state, and persists only `status === 'crash'` events.
-4. Express serves `public/` and exposes `/api/analytics`; the `ws` server pushes live updates over the same HTTP server.
+4. Express serves `public/` and exposes `/api/analytics` and `/api/health`; the `ws` server pushes live updates over the same HTTP server.
 5. Streak counters are seeded from the database at startup so they survive restarts.
 
 ## Troubleshooting
@@ -211,9 +258,13 @@ sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 
 
 The WebSocket client reconnects automatically. If it stays disconnected, check the server logs — Puppeteer may be inside its 10-second restart backoff after a page crash.
 
+### `dump-monthly.sh` cannot load `better-sqlite3`
+
+The native module is built against one Node ABI, and the `node` on your `PATH` may be another. Rebuild it for the Node you intend to use (`npm rebuild better-sqlite3`), or point the script at a known-good binary with `NODE_BIN=/path/to/node ./dump-monthly.sh`.
+
 ### Database is locked
 
-WAL mode allows concurrent readers (e.g. the `sqlite3` CLI), but **never run two `capture.js` instances against the same DB** — `gameId` PK collisions will silently drop one writer's rows and streak counters will desync.
+WAL mode allows concurrent readers (the archive script, the `sqlite3` CLI), but **never run two `capture.js` instances against the same DB** — `gameId` PK collisions will silently drop one writer's rows and streak counters will desync.
 
 > [!CAUTION]
 > Stake aggressively rate-limits scrapers. Running multiple instances from the same IP, or stripping the anti-detection flags, is likely to get the session blocked.
