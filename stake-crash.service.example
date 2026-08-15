@@ -1,0 +1,83 @@
+# Example systemd unit for the Stake Crash Monitor.
+#
+# Copy it, replace the three placeholders below, then install it:
+#
+#   sed -e "s|__USER__|$USER|g" \
+#       -e "s|__WORKDIR__|$PWD|g" \
+#       -e "s|__NODE__|$(command -v node)|g" \
+#       stake-crash.service.example | sudo tee /etc/systemd/system/stake-crash.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now stake-crash
+#   journalctl -u stake-crash -f
+#
+# Run that from the repo checkout, as the user the service should run as, with the
+# same Node on PATH that you ran `npm install` with. Or just edit the file by hand:
+#
+#   __USER__    the unprivileged user that owns the checkout   (e.g. deploy)
+#   __WORKDIR__ absolute path to the repo checkout             (e.g. /opt/stake-crash-archives)
+#   __NODE__    absolute path to the node binary               (e.g. /usr/bin/node)
+#
+# Do not run this as root: Chromium refuses to start as root without --no-sandbox,
+# and the checkout would end up owned by root.
+
+[Unit]
+Description=Stake Crash Monitor
+After=network-online.target
+Wants=network-online.target
+# Give up after 5 failed starts in 60s instead of crash-looping forever. A unit that
+# fails this fast is misconfigured (bad path, missing deps) and will not fix itself.
+# Clear the resulting failed state with `systemctl reset-failed stake-crash`.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=__USER__
+Group=__USER__
+WorkingDirectory=__WORKDIR__
+
+# capture.js reads .env from WorkingDirectory via dotenv, so no EnvironmentFile is
+# needed. To configure the service without a .env file, use lines like:
+#   Environment=PORT=3000
+#   Environment=DASHBOARD_ENABLED=false
+# Never put TELEGRAM_BOT_TOKEN here — this file is world-readable under /etc.
+# Use `EnvironmentFile=__WORKDIR__/.env` with chmod 600 on that file instead.
+
+# IMPORTANT: use an absolute path to node, and keep it on the same Node major that
+# built node_modules. better-sqlite3 is a native addon, so installing deps under a
+# different major (ABI) makes this unit die instantly at startup with
+# ERR_DLOPEN_FAILED / "NODE_MODULE_VERSION nnn ... requires NODE_MODULE_VERSION mmm".
+# After upgrading Node, run `npm rebuild better-sqlite3` and update the path here.
+#
+# nvm users: nvm is a shell function and does not exist under systemd, so a bare
+# `node` will not resolve. Point at the versioned binary directly, e.g.
+#   /home/youruser/.nvm/versions/node/v22.23.1/bin/node
+# and be aware that `nvm install` of a new default silently breaks this pin.
+ExecStart=__NODE__ __WORKDIR__/capture.js
+
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Resilient shutdown / leak prevention.
+# KillSignal=SIGTERM lets capture.js's cleanup() run on a normal stop; KillMode=control-group
+# then SIGKILLs anything left in the cgroup (e.g. headless Chrome) after TimeoutStopSec.
+# ExecStopPost is a system-wide safety net: it sweeps any leaked puppeteer Chrome by name even
+# if the main process was hard-killed (kill -9 skips cleanup()) or started outside systemd. It
+# runs after the unit fully stops and before any restart's ExecStart, so it can't hit a live browser.
+KillSignal=SIGTERM
+KillMode=control-group
+TimeoutStopSec=20
+# The leading `-` keeps a no-match exit 1 from pkill (nothing leaked — the normal case)
+# from being reported as a unit failure.
+ExecStopPost=-/usr/bin/pkill -9 -f puppeteer_dev_chrome_profile
+
+# Note on hardening: options like ProtectSystem=strict, PrivateTmp=yes or
+# NoNewPrivileges=yes are deliberately omitted. Puppeteer's Chromium needs a writable
+# /tmp for its user-data-dir and its own sandbox/namespace handling, and these break it
+# in ways that surface as opaque browser launch failures. Add them one at a time and
+# verify `/api/health` still returns 200 after each.
+
+[Install]
+WantedBy=multi-user.target

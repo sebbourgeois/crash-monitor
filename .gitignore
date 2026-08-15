@@ -5,6 +5,10 @@ node_modules/
 .env
 .env.local
 
+# Local deployment config — machine-specific paths/user.
+# Fork from stake-crash.service.example instead; it is tracked.
+stake-crash.service
+
 # Data store
 crash_results.jsonl
 crash_results.db

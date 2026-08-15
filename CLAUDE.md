@@ -121,7 +121,9 @@ CREATE TABLE crash_results (
 
 ## Deployment
 
-`stake-crash.service` is a systemd unit with hardcoded paths for the original author's environment (`/home/sb/...`, nvm-installed Node). Adjust `User`, `WorkingDirectory`, and `ExecStart` before enabling. The unit relies on `Restart=always` for process-level resilience; in-process resilience comes from `captureWithRetry`.
+`stake-crash.service.example` is the tracked systemd unit template, with `__USER__` / `__WORKDIR__` / `__NODE__` placeholders and a `sed` recipe in the README to fill them. The rendered `stake-crash.service` is gitignored, so machine-specific paths never land in the repo — edit the `.example` for anything that should reach forkers, not a local copy.
+
+`ExecStart` must use an absolute `node` path on the same Node major that built `node_modules`: `better-sqlite3` is a native addon, so an `npm install` under a different major kills the unit at startup with `ERR_DLOPEN_FAILED` / `NODE_MODULE_VERSION` mismatch (fix: `npm rebuild better-sqlite3`, then repoint `ExecStart`). nvm is a shell function and does not exist under systemd, so a bare `node` will not resolve. The unit relies on `Restart=always` for process-level resilience; in-process resilience comes from `captureWithRetry`.
 
 ## Things that look weird but aren't
 
