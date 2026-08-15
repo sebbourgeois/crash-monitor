@@ -16,7 +16,9 @@ npm start                  # = node capture.js
 
 Then open `http://localhost:3000` (live dashboard) or `http://localhost:3000/analytics.html` (period-windowed analytics).
 
-There is no test suite, linter, or build step — `capture.js` runs directly under Node 18+.
+There is no test suite, linter, or build step — `capture.js` runs directly under Node 22.12+ (the floor Puppeteer 25 sets; declared in `engines`).
+
+`package.json` carries an `overrides` block pinning `uuid` to `^11.1.1`. `node-notifier@10.0.1` is the latest release and still depends on `uuid@^8`, which has an open advisory, so the override is the only fix that is not a downgrade. Drop it if node-notifier ever ships a version that bumps uuid itself.
 
 ## Environment
 
