@@ -1,18 +1,11 @@
 {
-  "generatedAt": "2026-08-15T15:38:51.286Z",
+  "generatedAt": "2026-09-01T00:05:03.469Z",
   "source": "crash_results.db",
   "regeneratedThisRun": [
-    "2026-01",
-    "2026-02",
-    "2026-03",
-    "2026-04",
-    "2026-05",
-    "2026-06",
-    "2026-07",
     "2026-08"
   ],
   "rowsWithoutTimestamp": 0,
-  "totalRows": 538102,
+  "totalRows": 588303,
   "months": [
     {
       "month": "2026-01",
@@ -1834,100 +1827,100 @@
     },
     {
       "month": "2026-08",
-      "generatedAt": "2026-08-15T15:38:51.261Z",
+      "generatedAt": "2026-09-01T00:05:03.414Z",
       "source": "crash_results.db",
       "csvFile": "crash_2026-08.csv",
-      "rows": 38124,
+      "rows": 88325,
       "firstResult": "2026-08-01T00:00:05.000Z",
-      "lastResult": "2026-08-15T15:38:14.000Z",
+      "lastResult": "2026-08-31T23:59:42.000Z",
       "coverage": {
-        "daysWithData": 14,
+        "daysWithData": 30,
         "largestGapSeconds": 195451,
         "largestGapStart": "2026-08-13T07:22:12.000Z"
       },
       "multiplier": {
         "min": 1,
         "max": 396865.56,
-        "mean": 20.178559,
-        "median": 1.969901,
-        "p25": 1.322598,
-        "p75": 3.959818,
-        "p90": 9.966377,
-        "p95": 20.069693,
-        "p99": 98.6585
+        "mean": 14.373915,
+        "median": 1.970667,
+        "p25": 1.319176,
+        "p75": 3.94675,
+        "p90": 10.047573,
+        "p95": 20.554188,
+        "p99": 101.84677
       },
       "distribution": [
         {
           "tier": "red",
           "range": "< 1.01x",
-          "count": 772,
-          "percent": 2.025
+          "count": 1711,
+          "percent": 1.9372
         },
         {
           "tier": "orange",
           "range": "1.01x - 1.99x",
-          "count": 18594,
-          "percent": 48.7724
+          "count": 43102,
+          "percent": 48.7993
         },
         {
           "tier": "green",
           "range": "2x - 99.99x",
-          "count": 18382,
-          "percent": 48.2163
+          "count": 42608,
+          "percent": 48.24
         },
         {
           "tier": "purple",
           "range": "100x - 999.99x",
-          "count": 346,
-          "percent": 0.9076
+          "count": 829,
+          "percent": 0.9386
         },
         {
           "tier": "turquoise",
           "range": ">= 1000x",
-          "count": 30,
-          "percent": 0.0787
+          "count": 75,
+          "percent": 0.0849
         }
       ],
       "thresholds": [
         {
           "atLeast": 1.01,
-          "count": 37352,
-          "percent": 97.975
+          "count": 86614,
+          "percent": 98.0628
         },
         {
           "atLeast": 2,
-          "count": 18758,
-          "percent": 49.2026
+          "count": 43512,
+          "percent": 49.2635
         },
         {
           "atLeast": 5,
-          "count": 7516,
-          "percent": 19.7146
+          "count": 17475,
+          "percent": 19.7849
         },
         {
           "atLeast": 10,
-          "count": 3798,
-          "percent": 9.9622
+          "count": 8878,
+          "percent": 10.0515
         },
         {
           "atLeast": 50,
-          "count": 775,
-          "percent": 2.0328
+          "count": 1814,
+          "percent": 2.0538
         },
         {
           "atLeast": 100,
-          "count": 376,
-          "percent": 0.9863
+          "count": 904,
+          "percent": 1.0235
         },
         {
           "atLeast": 1000,
-          "count": 30,
-          "percent": 0.0787
+          "count": 75,
+          "percent": 0.0849
         }
       ],
       "instantCrashes": {
-        "count": 772,
-        "percent": 2.025
+        "count": 1711,
+        "percent": 1.9372
       },
       "resultsPerDay": [
         {
@@ -1984,7 +1977,71 @@
         },
         {
           "date": "2026-08-15",
-          "count": 264
+          "count": 1320
+        },
+        {
+          "date": "2026-08-16",
+          "count": 3070
+        },
+        {
+          "date": "2026-08-17",
+          "count": 3090
+        },
+        {
+          "date": "2026-08-18",
+          "count": 3081
+        },
+        {
+          "date": "2026-08-19",
+          "count": 3083
+        },
+        {
+          "date": "2026-08-20",
+          "count": 3076
+        },
+        {
+          "date": "2026-08-21",
+          "count": 3122
+        },
+        {
+          "date": "2026-08-22",
+          "count": 3067
+        },
+        {
+          "date": "2026-08-23",
+          "count": 3005
+        },
+        {
+          "date": "2026-08-24",
+          "count": 3133
+        },
+        {
+          "date": "2026-08-25",
+          "count": 3097
+        },
+        {
+          "date": "2026-08-26",
+          "count": 3081
+        },
+        {
+          "date": "2026-08-27",
+          "count": 3043
+        },
+        {
+          "date": "2026-08-28",
+          "count": 3014
+        },
+        {
+          "date": "2026-08-29",
+          "count": 3101
+        },
+        {
+          "date": "2026-08-30",
+          "count": 3043
+        },
+        {
+          "date": "2026-08-31",
+          "count": 3039
         }
       ],
       "topMultipliers": [
@@ -2001,10 +2058,34 @@
           "ts_ms": 1786160609000
         },
         {
+          "gameId": "a9716649-91f6-4720-91a3-e5541a07d427",
+          "multiplier": 12209.67,
+          "timestamp": "Sat, 15 Aug 2026 22:22:32 GMT",
+          "ts_ms": 1786832552000
+        },
+        {
+          "gameId": "eb3810ea-23ac-485d-9250-f35381f5273f",
+          "multiplier": 10261.031,
+          "timestamp": "Fri, 21 Aug 2026 00:04:16 GMT",
+          "ts_ms": 1787270656000
+        },
+        {
           "gameId": "2155955f-244e-403a-aefb-5276c2063359",
           "multiplier": 9113.042,
           "timestamp": "Sat, 08 Aug 2026 16:22:13 GMT",
           "ts_ms": 1786206133000
+        },
+        {
+          "gameId": "ffcfe573-81be-4b74-b040-fd12dff55463",
+          "multiplier": 8204.601,
+          "timestamp": "Mon, 31 Aug 2026 12:52:01 GMT",
+          "ts_ms": 1788180721000
+        },
+        {
+          "gameId": "b25fe5b5-dd14-47ed-b5c8-41f22080ea32",
+          "multiplier": 7653.3916,
+          "timestamp": "Mon, 31 Aug 2026 03:35:06 GMT",
+          "ts_ms": 1788147306000
         },
         {
           "gameId": "0d2589d8-483a-486e-a03a-8f6e516a0fb0",
@@ -2019,34 +2100,10 @@
           "ts_ms": 1786346927000
         },
         {
-          "gameId": "d81ae27e-fe82-4664-b3ad-1840458c503c",
-          "multiplier": 5602.36,
-          "timestamp": "Sat, 08 Aug 2026 08:31:05 GMT",
-          "ts_ms": 1786177865000
-        },
-        {
-          "gameId": "1760262a-4176-49c7-8ccf-414123d71f8d",
-          "multiplier": 3906.923,
-          "timestamp": "Sun, 02 Aug 2026 10:01:28 GMT",
-          "ts_ms": 1785664888000
-        },
-        {
-          "gameId": "a6d43650-818c-422e-ad27-110abaae5c67",
-          "multiplier": 3187.4578,
-          "timestamp": "Fri, 07 Aug 2026 06:57:15 GMT",
-          "ts_ms": 1786085835000
-        },
-        {
-          "gameId": "8a4afc8c-cff9-41a1-82cd-9e298b408d18",
-          "multiplier": 2842.4858,
-          "timestamp": "Sat, 01 Aug 2026 00:19:34 GMT",
-          "ts_ms": 1785543574000
-        },
-        {
-          "gameId": "5720597a-061c-4ae4-91ed-dec9de87c4d3",
-          "multiplier": 2281.3113,
-          "timestamp": "Wed, 05 Aug 2026 20:26:48 GMT",
-          "ts_ms": 1785961608000
+          "gameId": "165e248c-4357-4203-946d-b6ff1c9b3709",
+          "multiplier": 6904.621,
+          "timestamp": "Wed, 19 Aug 2026 07:39:28 GMT",
+          "ts_ms": 1787125168000
         }
       ]
     }

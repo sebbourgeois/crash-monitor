@@ -1,0 +1,2 @@
+month,rows,first_result,last_result,min_multiplier,mean_multiplier,max_multiplier,instant_crash_pct,csv_file
+2026-08,50789,2026-08-15T17:39:03.064Z,2026-08-31T23:59:50.180Z,1,11.429286,25956.05,2.0634,crash_2026-08.csv

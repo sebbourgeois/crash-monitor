@@ -1,0 +1,241 @@
+{
+  "generatedAt": "2026-09-01T00:05:04.163Z",
+  "source": "shuffle_crash_results.db",
+  "regeneratedThisRun": [
+    "2026-08"
+  ],
+  "rowsWithoutTimestamp": 0,
+  "totalRows": 50789,
+  "months": [
+    {
+      "month": "2026-08",
+      "generatedAt": "2026-09-01T00:05:04.134Z",
+      "source": "shuffle_crash_results.db",
+      "csvFile": "crash_2026-08.csv",
+      "rows": 50789,
+      "firstResult": "2026-08-15T17:39:03.064Z",
+      "lastResult": "2026-08-31T23:59:50.180Z",
+      "coverage": {
+        "daysWithData": 17,
+        "largestGapSeconds": 224.6,
+        "largestGapStart": "2026-08-26T20:11:44.525Z"
+      },
+      "multiplier": {
+        "min": 1,
+        "max": 25956.05,
+        "mean": 11.429286,
+        "median": 1.97,
+        "p25": 1.32,
+        "p75": 3.94,
+        "p90": 9.91,
+        "p95": 20,
+        "p99": 103.04
+      },
+      "distribution": [
+        {
+          "tier": "red",
+          "range": "< 1.01x",
+          "count": 1048,
+          "percent": 2.0634
+        },
+        {
+          "tier": "orange",
+          "range": "1.01x - 1.99x",
+          "count": 24623,
+          "percent": 48.481
+        },
+        {
+          "tier": "green",
+          "range": "2x - 99.99x",
+          "count": 24603,
+          "percent": 48.4416
+        },
+        {
+          "tier": "purple",
+          "range": "100x - 999.99x",
+          "count": 465,
+          "percent": 0.9156
+        },
+        {
+          "tier": "turquoise",
+          "range": ">= 1000x",
+          "count": 50,
+          "percent": 0.0984
+        }
+      ],
+      "thresholds": [
+        {
+          "atLeast": 1.01,
+          "count": 49741,
+          "percent": 97.9366
+        },
+        {
+          "atLeast": 2,
+          "count": 25118,
+          "percent": 49.4556
+        },
+        {
+          "atLeast": 5,
+          "count": 10083,
+          "percent": 19.8527
+        },
+        {
+          "atLeast": 10,
+          "count": 5029,
+          "percent": 9.9018
+        },
+        {
+          "atLeast": 50,
+          "count": 1011,
+          "percent": 1.9906
+        },
+        {
+          "atLeast": 100,
+          "count": 515,
+          "percent": 1.014
+        },
+        {
+          "atLeast": 1000,
+          "count": 50,
+          "percent": 0.0984
+        }
+      ],
+      "instantCrashes": {
+        "count": 1048,
+        "percent": 2.0634
+      },
+      "resultsPerDay": [
+        {
+          "date": "2026-08-15",
+          "count": 834
+        },
+        {
+          "date": "2026-08-16",
+          "count": 3156
+        },
+        {
+          "date": "2026-08-17",
+          "count": 3124
+        },
+        {
+          "date": "2026-08-18",
+          "count": 3138
+        },
+        {
+          "date": "2026-08-19",
+          "count": 3126
+        },
+        {
+          "date": "2026-08-20",
+          "count": 3094
+        },
+        {
+          "date": "2026-08-21",
+          "count": 3205
+        },
+        {
+          "date": "2026-08-22",
+          "count": 3085
+        },
+        {
+          "date": "2026-08-23",
+          "count": 3044
+        },
+        {
+          "date": "2026-08-24",
+          "count": 3146
+        },
+        {
+          "date": "2026-08-25",
+          "count": 3117
+        },
+        {
+          "date": "2026-08-26",
+          "count": 3091
+        },
+        {
+          "date": "2026-08-27",
+          "count": 3087
+        },
+        {
+          "date": "2026-08-28",
+          "count": 3109
+        },
+        {
+          "date": "2026-08-29",
+          "count": 3105
+        },
+        {
+          "date": "2026-08-30",
+          "count": 3169
+        },
+        {
+          "date": "2026-08-31",
+          "count": 3159
+        }
+      ],
+      "topMultipliers": [
+        {
+          "gameId": "3937072",
+          "multiplier": 25956.05,
+          "timestamp": "2026-08-27T08:58:21.388Z",
+          "ts_ms": 1787821101388
+        },
+        {
+          "gameId": "3907807",
+          "multiplier": 15576.81,
+          "timestamp": "2026-08-17T23:38:50.991Z",
+          "ts_ms": 1787009930991
+        },
+        {
+          "gameId": "3901331",
+          "multiplier": 14855.45,
+          "timestamp": "2026-08-15T22:04:01.555Z",
+          "ts_ms": 1786831441555
+        },
+        {
+          "gameId": "3922703",
+          "multiplier": 14318.58,
+          "timestamp": "2026-08-22T17:42:01.713Z",
+          "ts_ms": 1787420521713
+        },
+        {
+          "gameId": "3941805",
+          "multiplier": 14272.1,
+          "timestamp": "2026-08-28T21:41:17.430Z",
+          "ts_ms": 1787953277430
+        },
+        {
+          "gameId": "3907294",
+          "multiplier": 12332.91,
+          "timestamp": "2026-08-17T19:57:05.491Z",
+          "ts_ms": 1786996625491
+        },
+        {
+          "gameId": "3911624",
+          "multiplier": 9877.5,
+          "timestamp": "2026-08-19T04:51:27.460Z",
+          "ts_ms": 1787115087460
+        },
+        {
+          "gameId": "3923532",
+          "multiplier": 8278.65,
+          "timestamp": "2026-08-23T00:14:56.214Z",
+          "ts_ms": 1787444096214
+        },
+        {
+          "gameId": "3935691",
+          "multiplier": 7340.78,
+          "timestamp": "2026-08-26T22:23:01.273Z",
+          "ts_ms": 1787782981273
+        },
+        {
+          "gameId": "3939478",
+          "multiplier": 7118.01,
+          "timestamp": "2026-08-28T03:37:53.004Z",
+          "ts_ms": 1787888273004
+        }
+      ]
+    }
+  ]
+}
