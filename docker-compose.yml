@@ -10,8 +10,10 @@ services:
       # One SQLite file per site, both on the same persistent volume.
       DB_PATH: /data/crash_results.db
       SHUFFLE_DB_PATH: /data/shuffle_crash_results.db
+      ROOBET_DB_PATH: /data/roobet_crash_results.db
       STAKE_ENABLED: ${STAKE_ENABLED:-true}
       SHUFFLE_ENABLED: ${SHUFFLE_ENABLED:-true}
+      ROOBET_ENABLED: ${ROOBET_ENABLED:-true}
       PORT: 3000
       DASHBOARD_ENABLED: ${DASHBOARD_ENABLED:-true}
       TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
@@ -20,7 +22,7 @@ services:
       DESKTOP_NOTIFICATIONS_ENABLED: "false"
     # One headless Chromium per site now shares this container, and Docker's
     # default 64 MB /dev/shm makes Chromium crash tabs under that pressure.
-    shm_size: 512m
+    shm_size: 768m
     volumes:
       - crash_data:/data
 
