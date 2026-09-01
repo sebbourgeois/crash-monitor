@@ -1,7 +1,7 @@
 {
   "name": "crash-monitor",
   "version": "1.1.0",
-  "description": "Monitor Stake.com and Shuffle.com crash game results via WebSocket",
+  "description": "Monitor Stake.com, Shuffle.com and Roobet.com crash game results via WebSocket",
   "main": "capture.js",
   "scripts": {
     "start": "node capture.js"

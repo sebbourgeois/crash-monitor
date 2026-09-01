@@ -8,13 +8,13 @@
 # retried run does the same thing.
 #
 # Every site with a database on disk is archived into its own directory, so a
-# single cron entry covers Stake and Shuffle without being edited.
+# single cron entry covers every monitored site without being edited.
 #
 # Usage:
 #   ./dump-last-month.sh [extra dump-monthly.sh args...]
 #
 # Any extra arguments are passed through, e.g. `./dump-last-month.sh -z` to
-# gzip the CSV, or `-s shuffle` to archive just one site. Override the target
+# gzip the CSV, or `-s roobet` to archive just one site. Override the target
 # month with MONTH=YYYY-MM for a backfill.
 #
 # Installed as:

@@ -451,7 +451,7 @@ h2 {
 }
 
 /* ============================================================
-   SITE TABS (Stake.com / Shuffle.com)
+   SITE TABS (one per site in lib/sites.js)
    ============================================================ */
 .site-tabs {
   display: flex;
