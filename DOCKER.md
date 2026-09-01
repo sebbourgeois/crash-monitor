@@ -7,8 +7,8 @@ This repo ships with a `Dockerfile` and `docker-compose.yml` that run `capture.j
 - **Image base:** `node:22-bookworm-slim` with Debian's `chromium` package — Puppeteer is told to use the system binary via `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium`, so no ~300 MB Chrome download during `npm ci`.
 - **Native module:** `better-sqlite3` is compiled in a builder stage and copied to the runtime image.
 - **Runs as non-root** (`app` user). The container PID 1 is `dumb-init` so `SIGTERM` reaches Node and the existing `cleanup()` handler runs.
-- **Persistent volume:** named volume `crash_data` is mounted at `/data`. Each site has its own DB there — `DB_PATH=/data/crash_results.db` and `SHUFFLE_DB_PATH=/data/shuffle_crash_results.db` — so both files plus their `-wal` and `-shm` sidecars survive container rebuilds.
-- **Two browsers:** one headless Chromium per enabled site. `shm_size: 512m` is set in the Compose file because Docker's default 64 MB `/dev/shm` is not enough for two Chromium instances and shows up as tabs crashing at random.
+- **Persistent volume:** named volume `crash_data` is mounted at `/data`. Each site has its own DB there — `DB_PATH=/data/crash_results.db`, `SHUFFLE_DB_PATH=/data/shuffle_crash_results.db` and `ROOBET_DB_PATH=/data/roobet_crash_results.db` — so every file plus its `-wal` and `-shm` sidecars survives container rebuilds.
+- **One browser per site:** one headless Chromium per enabled site. `shm_size: 768m` is set in the Compose file because Docker's default 64 MB `/dev/shm` is not enough for several Chromium instances and shows up as tabs crashing at random.
 - **Port:** `3000` is exposed; override with the `PORT` env var on the host (e.g. `PORT=4000 docker compose up -d` maps host 4000 → container 3000).
 
 ## Quick start
@@ -42,7 +42,8 @@ Environment variables are read from your shell or a `.env` file in the project r
 | `DESKTOP_NOTIFICATIONS_ENABLED` | forced to `false` | `node-notifier` can't reach a desktop from a container |
 | `DB_PATH` | `/data/crash_results.db` | Don't override unless you also change the volume mount |
 | `SHUFFLE_DB_PATH` | `/data/shuffle_crash_results.db` | Same; must never equal `DB_PATH` |
-| `STAKE_ENABLED` / `SHUFFLE_ENABLED` | `true` | Set one to `false` to run a single browser |
+| `ROOBET_DB_PATH` | `/data/roobet_crash_results.db` | Same; again its own file |
+| `STAKE_ENABLED` / `SHUFFLE_ENABLED` / `ROOBET_ENABLED` | `true` | Set to `false` to skip that site's browser |
 
 ## Migrating the existing DB to the volume
 

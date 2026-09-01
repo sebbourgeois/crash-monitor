@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Node.js monitor for the Stake.com and Shuffle.com Crash games. For each site, headless Puppeteer attaches a CDP session to intercept `Network.webSocketFrameReceived`, normalizes the site's frames to a common event shape, persists final results to that site's own SQLite file, and broadcasts live state to a bundled web dashboard with one tab per site. Read-only — never places bets or interacts with the pages.
+Node.js monitor for the Stake.com, Shuffle.com and Roobet.com Crash games. For each site, headless Puppeteer attaches a CDP session to intercept `Network.webSocketFrameReceived`, normalizes the site's frames to a common event shape, persists final results to that site's own SQLite file, and broadcasts live state to a bundled web dashboard with one tab per site. Read-only — never places bets or interacts with the pages.
 
 ## Commands
 
@@ -14,7 +14,7 @@ cp .env.example .env       # all flags optional; defaults work
 npm start                  # = node capture.js
 ```
 
-Then open `http://localhost:3000` (live dashboard) or `http://localhost:3000/analytics.html` (period-windowed analytics). Both have Stake.com / Shuffle.com tabs; `?site=shuffle` deep-links a tab.
+Then open `http://localhost:3000` (live dashboard) or `http://localhost:3000/analytics.html` (period-windowed analytics). Both have Stake.com / Shuffle.com / Roobet.com tabs; `?site=roobet` deep-links a tab.
 
 There is no test suite, linter, or build step — `capture.js` runs directly under Node 22.12+ (the floor Puppeteer 25 sets; declared in `engines`).
 
@@ -25,7 +25,7 @@ There is no test suite, linter, or build step — `capture.js` runs directly und
 | File | Responsibility |
 |---|---|
 | `capture.js` | Wiring only. Builds one monitor per site, serves HTTP + WS, owns the watchdog ladder, notifications and shutdown. |
-| `lib/sites.js` | The **only** place site differences live: page URL, env var names, and `parseFrame()` per site. |
+| `lib/sites.js` | The **only** place site differences live: page URL, env var names, and `parseFrame()` per site — including the wire format, since Roobet is binary and the others are JSON. |
 | `lib/store.js` | One SQLite file: schema, migration, history, `buildAnalytics()`. |
 | `lib/monitor.js` | One site's capture loop: browser, retry, streaks, dedupe, staleness clock. |
 | `public/` | Dashboards; `site-tabs.js` is shared by both pages. |
@@ -39,7 +39,8 @@ There is no test suite, linter, or build step — `capture.js` runs directly und
 | `PORT` | `3000` | Web server / WS port |
 | `DB_PATH` | `crash_results.db` | Stake's SQLite file |
 | `SHUFFLE_DB_PATH` | `shuffle_crash_results.db` | Shuffle's SQLite file — never point two sites at one file |
-| `STAKE_ENABLED` / `SHUFFLE_ENABLED` | `true` | `false` skips that site's browser; its archive is still served |
+| `ROOBET_DB_PATH` | `roobet_crash_results.db` | Roobet's SQLite file |
+| `STAKE_ENABLED` / `SHUFFLE_ENABLED` / `ROOBET_ENABLED` | `true` | `false` skips that site's browser; its archive is still served |
 | `DASHBOARD_ENABLED` | `true` | Set to `false` for capture-only daemon (skips Express + WS server) |
 | `TELEGRAM_ENABLED` | `false` | Only critical events (instant crash, 1000x+) are sent |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | Required when Telegram is on |
@@ -72,7 +73,7 @@ The CDP Network listener is attached **after** navigation. Enabling Network on a
 
 `handleFrame()` is the hot path:
 
-1. `site.parseFrame(data)` returns a normalized event or `null`.
+1. `site.parseFrame(response)` — given the raw CDP frame — returns a normalized event or `null`.
 2. For statuses in `{in_progress, starting, crash, start}`: update `currentGameState`, call `onLive` and broadcast `{type:'live', site, state}`.
 3. **Only `status === 'crash'` is persisted.** Duplicates are filtered via a `processedGames` Set, pruned to 500 entries when it exceeds 1000 — this is per-process, not DB-backed, so the DB's `INSERT OR IGNORE` on `gameId` PK is the real duplicate guard.
 4. Streaks are incremented for every crash, then `gamesSinceLast1x` / `gamesSinceLast1000x` reset to 0 after their threshold fires. `gamesSinceDouble1x` resets only on back-to-back `<1.01x` (tracked by `lastWas1x`).
@@ -80,7 +81,9 @@ The CDP Network listener is attached **after** navigation. Enabling Network on a
 
 ### Frame parsing (`lib/sites.js`)
 
-This is the most error-prone area, and the only file that knows how the two sites differ. Both parsers return `{ status, gameId, multiplier, timestamp? }` or `null`, with `status` in `starting | start | in_progress | crash`.
+This is the most error-prone area, and the only file that knows how the sites differ. Every parser returns `{ status, gameId, multiplier, timestamp? }` or `null`, with `status` in `starting | start | in_progress | crash`.
+
+`parseFrame()` receives the **raw CDP frame** (`{ opcode, payloadData }`), not a decoded object, because the wire format is itself a site difference: Stake and Shuffle send JSON text (opcode 1) while Roobet sends packed binary (opcode 2, base64-encoded by CDP). `monitor.js` therefore does no decoding at all. `jsonFrame(parse)` wraps the two JSON sites so `parseStakeFrame` / `parseShuffleFrame` stay pure functions of the decoded object; it drops binary frames and swallows JSON syntax errors. Do not move `JSON.parse` back into `monitor.js` — it would silently discard every Roobet frame.
 
 **Stake** — GraphQL subscription frames with `data.type` of `'data'` or `'next'`; the event is at `payload.data.crash?.event || payload.data.event` (both shapes are in use) and must have `__typename === 'MultiplayerCrash'`. Its status strings are already the normalized vocabulary. Multipliers are full floats.
 
@@ -91,6 +94,19 @@ This is the most error-prone area, and the only file that knows how the two site
 - the id is the numeric `crashGameId` (increasing integers, vs Stake's UUIDs) — stringified for the PK;
 - there is no timestamp field; `startedAt` (epoch ms) + `elapsed` (ms) is the actual crash moment, which beats the receive time;
 - a `CRASHED` frame without a usable `crashPoint` is dropped rather than archived as a bogus `1.00x`.
+
+**Roobet** — Socket.IO on a `/crash` namespace. Every update is the single event `stateUpdate`, which Socket.IO splits into a text announcement (`451-/crash,["stateUpdate",{"_placeholder":true,"num":0}]`) plus one binary attachment. The parser ignores the announcement and reads the attachment directly; that is only safe because `stateUpdate` is the sole event on the namespace and each payload's first byte is a self-describing tag. Strings are length-prefixed with one byte, integers are big-endian int32:
+
+- **tag `0x04`** (5 bytes) — a round tick every 150ms, carrying *elapsed milliseconds*, nothing else.
+- **tag `0x03`** (35 or 104 bytes) — round lifecycle: id length, 24-char Mongo ObjectId, phase byte, two int32 clock offsets, and for phase 4 a 64-char provably-fair hash plus the crash point **in hundredths** (`187` → `1.87x`). Phases map `1 → starting`, `2 → start`, `3 → in_progress`, `4 → crash`.
+- **tag `0x05`** — other players' bets. Ignored.
+
+Two consequences unique to this site:
+
+- **ticks carry no game id**, so the id from the last lifecycle frame is held in the module-level `roobetGameId`. Until one arrives (a fresh browser joining mid-round) ticks are dropped rather than attributed to a null game — that costs at most the live display for one partial round, and nothing in the archive, since the crash frame carries the id itself.
+- **ticks carry no multiplier either** — the real client derives it from elapsed time. `ROOBET_GROWTH_PER_MS` (`6.014e-5`) and `ROOBET_LAUNCH_MS` (`233`) are a least-squares fit over 21 observed rounds, accurate to 0.5% from 1.01x to 28.23x, clamped at 1.00x. **Only the live display uses them.** The archived crash point is always the exact integer from phase 4, never a value computed from this curve, so a drift in Roobet's growth constant would cosmetically skew the ticker and leave the data correct.
+
+Also worth knowing: the last ~70 ticks of a Roobet round arrive as a burst with 1ms elapsed steps rather than 150ms, so live broadcasts clump at the end of each round. That is Roobet's behaviour, not a bug.
 
 ### Stall watchdog
 
@@ -148,13 +164,13 @@ The server uses these labels in `buildAnalytics().distribution`; the frontends m
 
 ## Data model
 
-Identical schema per site, in **separate files** (`crash_results.db`, `shuffle_crash_results.db`):
+Identical schema per site, in **separate files** (`crash_results.db`, `shuffle_crash_results.db`, `roobet_crash_results.db`):
 
 ```sql
 CREATE TABLE crash_results (
   gameId               TEXT    PRIMARY KEY,   -- dedupe boundary, unique within one site only
   multiplier           REAL    NOT NULL,
-  timestamp            TEXT    NOT NULL,      -- ISO 8601 (Stake's own, or derived from Shuffle's startedAt+elapsed)
+  timestamp            TEXT    NOT NULL,      -- ISO 8601 (Stake's own, derived from Shuffle's startedAt+elapsed, or receive time for Roobet)
   ts_ms                INTEGER,               -- epoch ms, indexed via idx_ts_ms
   gamesSinceLast1x     INTEGER,
   gamesSinceLast1000x  INTEGER,
@@ -166,7 +182,7 @@ CREATE TABLE crash_results (
 
 ## Archiving
 
-`dump-monthly.sh` dumps **every site that has a DB on disk** by default, each into its own directory (`db-archives/` for stake, `db-archives-shuffle/` for shuffle), with identical `crash_YYYY-MM.csv` / `.summary.json` naming inside. `-s SITE` scopes it; `-d`/`-o` override paths and therefore only work with a single site. One site's failure does not abort the others — failures are collected and reported with a non-zero exit at the end. `dump-last-month.sh` (the cron entry point) passes everything through, so the existing single cron line covers new sites automatically.
+`dump-monthly.sh` dumps **every site that has a DB on disk** by default, each into its own directory (`db-archives/` for stake, `db-archives-shuffle/` for shuffle, `db-archives-roobet/` for roobet), with identical `crash_YYYY-MM.csv` / `.summary.json` naming inside. `-s SITE` scopes it; `-d`/`-o` override paths and therefore only work with a single site. One site's failure does not abort the others — failures are collected and reported with a non-zero exit at the end. `dump-last-month.sh` (the cron entry point) passes everything through, so the existing single cron line covers new sites automatically.
 
 ## Deployment
 
@@ -174,7 +190,7 @@ CREATE TABLE crash_results (
 
 `ExecStart` must use an absolute `node` path on the same Node major that built `node_modules`: `better-sqlite3` is a native addon, so an `npm install` under a different major kills the unit at startup with `ERR_DLOPEN_FAILED` / `NODE_MODULE_VERSION` mismatch (fix: `npm rebuild better-sqlite3`, then repoint `ExecStart`). nvm is a shell function and does not exist under systemd, so a bare `node` will not resolve. The unit relies on `Restart=always` for process-level resilience; in-process resilience comes from each site's `captureWithRetry`.
 
-The Docker image must `COPY lib ./lib` alongside `capture.js` and `public`. Compose sets `shm_size: 512m` because two Chromium instances exhaust Docker's default 64 MB `/dev/shm`.
+The Docker image must `COPY lib ./lib` alongside `capture.js` and `public`. Compose sets `shm_size: 768m` because the per-site Chromium instances exhaust Docker's default 64 MB `/dev/shm`.
 
 ## Things that look weird but aren't
 
@@ -184,4 +200,5 @@ The Docker image must `COPY lib ./lib` alongside `capture.js` and `public`. Comp
 - The live stdout line is rendered centrally by `renderLiveLine()` in `capture.js` from every monitor's `liveState`, not by each monitor. Two sites each overwriting their own `\r` line garbles the terminal.
 - `migrate_to_sqlite.js` used to exist for one-time JSONL→SQLite import; it has been removed. Don't add it back — `migrateTsMs` in `lib/store.js` is the only ongoing migration path.
 - The `processedGames` Set is *also* used as a dedupe even though the DB has `INSERT OR IGNORE` on `gameId`. The Set short-circuits before `store.insert()` and before incrementing streak counters — removing it would cause duplicate streak increments on the same `gameId` within a single process.
+- Roobet's `parseFrame` keeps module-level state (`roobetGameId`) even though every other parser is pure. Ticks genuinely do not carry an id, so there is nothing to be pure over; it is safe because exactly one monitor exists per site.
 - A disabled site still opens (and therefore creates) its DB file. That keeps its dashboard tab and `/api/analytics` working uniformly instead of special-casing every read path.
