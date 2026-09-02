@@ -44,6 +44,7 @@ There is no test suite, linter, or build step — `capture.js` runs directly und
 | `DASHBOARD_ENABLED` | `true` | Set to `false` for capture-only daemon (skips Express + WS server) |
 | `TELEGRAM_ENABLED` | `false` | Only critical events (instant crash, 1000x+) are sent |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | Required when Telegram is on |
+| `TELEGRAM_SITES` | `all` | Which sites push to Telegram: `all`, `none`, or `stake,shuffle` — console/desktop are unaffected |
 | `DESKTOP_NOTIFICATIONS_ENABLED` | `false` | Uses `node-notifier` |
 | `WATCHDOG_ENABLED` | `true` | Stall watchdog; `false` disables both tiers |
 | `WATCHDOG_STALE_MS` | `180000` | No new row for this long = that site is stalled |

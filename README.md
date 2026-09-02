@@ -92,6 +92,7 @@ All configuration is via environment variables; a `.env` file in the project roo
 | `TELEGRAM_ENABLED` | `false` | Send extreme-event alerts via Telegram |
 | `TELEGRAM_BOT_TOKEN` | — | Bot token from [@BotFather](https://t.me/BotFather) |
 | `TELEGRAM_CHAT_ID` | — | Target chat ID for alerts |
+| `TELEGRAM_SITES` | `all` | Which sites push to Telegram: `all`, `none`, or a comma-separated list of site keys (`stake,shuffle`). Console and desktop notifications ignore it |
 | `DESKTOP_NOTIFICATIONS_ENABLED` | `false` | Native desktop alerts via `node-notifier` |
 | `WATCHDOG_ENABLED` | `true` | Stall watchdog (see [below](#stall-watchdog)) |
 | `WATCHDOG_STALE_MS` | `180000` | How long without a new result counts as stalled |

@@ -19,6 +19,23 @@ const DESKTOP_NOTIFICATIONS_ENABLED = process.env.DESKTOP_NOTIFICATIONS_ENABLED 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+// Which sites may reach Telegram: "all" (default), "none", or a comma-separated
+// list of site keys ("stake,shuffle"). Console and desktop notifications are
+// unaffected — this only narrows the one channel that pushes to a phone.
+function parseSiteFilter(raw, varName) {
+  const value = String(raw ?? 'all').trim().toLowerCase();
+  if (value === '' || value === 'all') return new Set(Object.keys(SITES));
+  if (value === 'none') return new Set();
+  const keys = value.split(',').map(s => s.trim()).filter(Boolean);
+  const unknown = keys.filter(k => !SITES[k]);
+  if (unknown.length) {
+    console.warn(`[CONFIG] ${varName} lists unknown site(s): ${unknown.join(', ')} — known keys are ${Object.keys(SITES).join(', ')}`);
+  }
+  return new Set(keys.filter(k => SITES[k]));
+}
+
+const TELEGRAM_SITES = parseSiteFilter(process.env.TELEGRAM_SITES, 'TELEGRAM_SITES');
+
 // Watchdog. A capture stalls silently: the process stays alive and the event
 // loop keeps ticking, but the site stops delivering websocket frames, so
 // nothing ever throws and neither the retry loop nor systemd notices. Observed
@@ -42,15 +59,18 @@ function broadcast(data) {
 }
 
 // Multi-channel notification helper. isCritical gates Telegram specifically;
-// console always prints.
-async function notify(title, message, isCritical = false) {
+// console always prints. siteKey scopes the alert to one site so TELEGRAM_SITES
+// can filter it; a null siteKey is a process-level alert, which still needs at
+// least one site opted in before it is worth pushing.
+async function notify(title, message, isCritical = false, siteKey = null) {
   const plainText = message.replace(/<[^>]*>?/gm, ''); // Strip HTML for desktop/logs
 
   // 1. Console
   console.log(`\n[NOTIFY] ${title}: ${plainText}`);
 
   // 2. Telegram
-  if (TELEGRAM_ENABLED && isCritical) {
+  const telegramAllowed = siteKey ? TELEGRAM_SITES.has(siteKey) : TELEGRAM_SITES.size > 0;
+  if (TELEGRAM_ENABLED && isCritical && telegramAllowed) {
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
     try {
       await fetch(url, {
@@ -100,7 +120,7 @@ async function onStale({ monitor, staleMs, strikes }) {
 
   if (strikes === 1) {
     console.error(`\n[WATCHDOG] [${label}] No crash result for ${mins} min — relaunching browser.`);
-    notify(`⚠️ ${label} capture stalled`, `No result for ${mins} min — relaunching browser`, false);
+    notify(`⚠️ ${label} capture stalled`, `No result for ${mins} min — relaunching browser`, false, monitor.site.key);
     monitor.graceWindow(); // hold off escalation for one more full window
     monitor.restart();
     return;
@@ -120,7 +140,7 @@ async function onStale({ monitor, staleMs, strikes }) {
   // Re-alert on the first escalation, then hourly-ish, so a multi-day outage
   // stays visible without one message per window.
   if (strikes === 2 || strikes % 20 === 0) {
-    await notify(`⚠️ ${label} capture stalled`, `No result for ${mins} min and a browser relaunch did not help. Other sites are healthy, so the process stays up.`, true);
+    await notify(`⚠️ ${label} capture stalled`, `No result for ${mins} min and a browser relaunch did not help. Other sites are healthy, so the process stays up.`, true, monitor.site.key);
   } else {
     console.error(`\n[WATCHDOG] [${label}] Still stalled (${mins} min) — relaunching again; other sites are healthy.`);
   }
@@ -249,6 +269,10 @@ process.on('unhandledRejection', (err) => {
 });
 
 setupServer();
+if (TELEGRAM_ENABLED) {
+  const listed = [...TELEGRAM_SITES].join(', ');
+  console.log(`Telegram alerts: ${TELEGRAM_SITES.size ? listed : 'no sites (TELEGRAM_SITES=none)'}`);
+}
 if (WATCHDOG.enabled) {
   console.log(`Watchdog: restart a site with no crash result for ${Math.round(WATCHDOG.staleMs / 1000)}s`);
 }

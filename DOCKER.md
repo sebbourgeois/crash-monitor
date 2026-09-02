@@ -39,6 +39,7 @@ Environment variables are read from your shell or a `.env` file in the project r
 | `DASHBOARD_ENABLED` | `true` | Set `false` for capture-only daemon |
 | `TELEGRAM_ENABLED` | `false` | Requires the two vars below |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | |
+| `TELEGRAM_SITES` | `all` | `all`, `none`, or `stake,shuffle` |
 | `DESKTOP_NOTIFICATIONS_ENABLED` | forced to `false` | `node-notifier` can't reach a desktop from a container |
 | `DB_PATH` | `/data/crash_results.db` | Don't override unless you also change the volume mount |
 | `SHUFFLE_DB_PATH` | `/data/shuffle_crash_results.db` | Same; must never equal `DB_PATH` |
