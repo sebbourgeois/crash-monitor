@@ -97,6 +97,7 @@ All configuration is via environment variables; a `.env` file in the project roo
 | `WATCHDOG_ENABLED` | `true` | Stall watchdog (see [below](#stall-watchdog)) |
 | `WATCHDOG_STALE_MS` | `180000` | How long without a new result counts as stalled |
 | `WATCHDOG_CHECK_MS` | `30000` | How often staleness is checked |
+| `BROWSER_RECYCLE_MS` | `21600000` | Relaunch each site's browser this often (6h) to shed page leaks; `0` disables |
 
 > [!TIP]
 > To find your `TELEGRAM_CHAT_ID`, message your bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy the `chat.id` field.

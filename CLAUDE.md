@@ -49,6 +49,7 @@ There is no test suite, linter, or build step — `capture.js` runs directly und
 | `WATCHDOG_ENABLED` | `true` | Stall watchdog; `false` disables both tiers |
 | `WATCHDOG_STALE_MS` | `180000` | No new row for this long = that site is stalled |
 | `WATCHDOG_CHECK_MS` | `30000` | Staleness poll interval |
+| `BROWSER_RECYCLE_MS` | `21600000` | Per-site scheduled browser relaunch (6h); `0` disables |
 
 ## Architecture
 
@@ -69,6 +70,10 @@ Startup order in `capture.js`, and it matters:
 ### Per-site monitor (`lib/monitor.js`)
 
 `captureWithRetry` is a single serialized `for(;;)` loop **per site**, so exactly one browser is ever alive per site. `captureOnce` ends its run by awaiting a promise that `page.error` / `browser.disconnected` reject and `restart()` resolves — routing those through the promise keeps them inside the loop's `catch` instead of escaping to `uncaughtException`. Errors back off 10s; a watchdog abort relaunches after 1s.
+
+**Scheduled recycle.** The three crash pages are single-page apps that leak while left open: measured on 2026-09-08, a Stake renderer was at 2.1 GB after 4 days and a Roobet one at 9.2 GB after 24h, with the process holding ~17 GB in total. The watchdog only relaunches on a stall, so `captureOnce` arms a `BROWSER_RECYCLE_MS` timer at each launch. When it fires the run is *not* aborted immediately: `recycleDue` is set and `handleFrame` calls `restart()` right after the next persisted crash, so a live round is never cut off; `RECYCLE_GRACE_MS` (2 min) forces it if no crash frame arrives. `clearRecycle()` runs on every exit from `captureOnce`, so a watchdog relaunch resets the schedule. Launch args add `--js-flags=--max-old-space-size=1024` as a backstop (a leaking renderer is killed by V8, `page.error` fires, and the retry loop relaunches it) and `--disable-features=IsolateOrigins,site-per-process` so third-party iframes share the page renderer instead of spawning ~5 extra processes per browser. Puppeteer merges a user-supplied `--disable-features` with its own list, so that flag does not clobber the defaults.
+
+**Parking tab.** After the CDP listener is attached, `captureOnce` opens a blank tab and brings it to front so the crash page is `document.hidden`. That pauses the page's `requestAnimationFrame` loop and with it the 60fps canvas animation, which was costing roughly a core per site (measured 2026-09-08 over 100s: Stake 117% → 8%, Roobet ~200% → 20%, Shuffle 123% → 43%). Frame delivery is unaffected because CDP reads websocket frames at the network layer and Puppeteer's default flags disable renderer backgrounding and timer throttling. Alternatives that were measured and rejected: request interception blocking images/media/fonts (halved Stake's CPU but Roobet received zero events), `--blink-settings=imagesEnabled=false` (Roobet zero events) and `--disable-gpu` (Roobet went to 260%). Do not close the blank tab or navigate it.
 
 The CDP Network listener is attached **after** navigation. Enabling Network on a freshly-created CDP session while still on `about:blank` and then navigating makes Chrome stop delivering `Network.webSocketFrameReceived` to that session, so the crash subscription frames never arrive (dashboard stays stuck at 1.00x).
 
@@ -198,7 +203,7 @@ The Docker image must `COPY lib ./lib` alongside `capture.js` and `public`. Comp
 - One stalled site does **not** restart the process while another site is healthy. That asymmetry is deliberate; see the watchdog section.
 - `cleanup()` is still wired to `uncaughtException` and `unhandledRejection` — the process exits on *any* unhandled error rather than trying to recover. That is a last-resort backstop: `page.error` and `browser.disconnected` are recovered in-process per site by `captureWithRetry`, and a silent stall is handled by the watchdog. `Restart=always` covers what's left.
 - `closeBrowser()` calls `removeAllListeners('disconnected')` before `close()`. Without it, an intentional teardown fires the handler and rejects a promise that has already settled — harmless today, but it makes the shutdown path depend on settle-order.
-- The live stdout line is rendered centrally by `renderLiveLine()` in `capture.js` from every monitor's `liveState`, not by each monitor. Two sites each overwriting their own `\r` line garbles the terminal.
+- The live stdout line is rendered centrally by `renderLiveLine()` in `capture.js` from every monitor's `liveState`, not by each monitor. Two sites each overwriting their own `\r` line garbles the terminal. It is skipped entirely, and the `\r\x1b[K` prefix on result lines dropped, when stdout is not a TTY: under systemd the never-terminated line made journald store the output as `[NNK blob data]` and bury every real log line.
 - `migrate_to_sqlite.js` used to exist for one-time JSONL→SQLite import; it has been removed. Don't add it back — `migrateTsMs` in `lib/store.js` is the only ongoing migration path.
 - The `processedGames` Set is *also* used as a dedupe even though the DB has `INSERT OR IGNORE` on `gameId`. The Set short-circuits before `store.insert()` and before incrementing streak counters — removing it would cause duplicate streak increments on the same `gameId` within a single process.
 - Roobet's `parseFrame` keeps module-level state (`roobetGameId`) even though every other parser is pure. Ticks genuinely do not carry an id, so there is nothing to be pure over; it is safe because exactly one monitor exists per site.

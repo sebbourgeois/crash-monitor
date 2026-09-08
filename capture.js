@@ -49,6 +49,14 @@ const WATCHDOG = {
   checkMs: Number(process.env.WATCHDOG_CHECK_MS) || 30 * 1000
 };
 
+// Scheduled browser recycle, per site. The sites' single-page apps leak while
+// left open (multi-GB renderers after a few days), and the watchdog only ever
+// relaunches on a stall. 0 disables. See lib/monitor.js for the round-boundary
+// handling.
+const BROWSER_RECYCLE_MS = process.env.BROWSER_RECYCLE_MS === undefined
+  ? 6 * 60 * 60 * 1000
+  : Number(process.env.BROWSER_RECYCLE_MS) || 0;
+
 const wsClients = new Set();
 
 function broadcast(data) {
@@ -95,8 +103,11 @@ async function notify(title, message, isCritical = false, siteKey = null) {
 
 // One shared stdout line for every site. Each monitor overwriting its own \r
 // line would garble the terminal once a second site is live, so the in-progress
-// multipliers are rendered together into a single line instead.
+// multipliers are rendered together into a single line instead. Skipped when
+// stdout is not a TTY: under systemd the never-ending \r line makes journald
+// log it as "blob data" and bury every real line.
 function renderLiveLine() {
+  if (!process.stdout.isTTY) return;
   const parts = monitors
     .filter(m => m.enabled && m.liveState.status === 'in_progress')
     .map(m => `${m.site.label} ${floorMult(m.liveState.multiplier)}x`);
@@ -159,6 +170,7 @@ const monitors = Object.values(SITES).map((site) => {
     store,
     enabled: process.env[site.enabledEnv] !== 'false',
     watchdog: WATCHDOG,
+    recycleMs: BROWSER_RECYCLE_MS,
     broadcast: (msg) => broadcast({ ...msg, site: site.key }),
     notify,
     onLive: renderLiveLine,
@@ -275,5 +287,6 @@ if (TELEGRAM_ENABLED) {
 }
 if (WATCHDOG.enabled) {
   console.log(`Watchdog: restart a site with no crash result for ${Math.round(WATCHDOG.staleMs / 1000)}s`);
+  console.log(`Browser recycle: ${BROWSER_RECYCLE_MS ? `every ${Math.round(BROWSER_RECYCLE_MS / 60000)} min per site` : 'disabled'}`);
 }
 monitors.forEach(m => m.start());
