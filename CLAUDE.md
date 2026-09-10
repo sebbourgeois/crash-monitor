@@ -50,6 +50,9 @@ There is no test suite, linter, or build step — `capture.js` runs directly und
 | `WATCHDOG_STALE_MS` | `180000` | No new row for this long = that site is stalled |
 | `WATCHDOG_CHECK_MS` | `30000` | Staleness poll interval |
 | `BROWSER_RECYCLE_MS` | `21600000` | Per-site scheduled browser relaunch (6h); `0` disables |
+| `TEMPERATURE_WINDOW` | `300` | Rounds in the live dashboard's cold/regular/hot window; clamped to ≥ 50 |
+| `STREAK_UNDER_X` | `2.2` | Cold streak watch: a run is consecutive rounds under this multiplier |
+| `STREAK_MIN_LEN` | `16` | Cold streak watch: run length that counts as an event; clamped to ≥ 2 |
 
 ## Architecture
 
@@ -66,6 +69,15 @@ Startup order in `capture.js`, and it matters:
 `createStore(dbFile, label)` opens the file in WAL mode, creates `crash_results` if missing, then runs `migrateTsMs()` — adds `ts_ms INTEGER` if absent, backfills it from `timestamp` for any rows where it's NULL, and creates `idx_ts_ms`. This makes period queries in `buildAnalytics()` cheap. Any schema change should follow the same idempotent ADD-COLUMN-then-backfill pattern, in this one function, not a separate migration file — it then applies to every site automatically.
 
 `seedStreaks()` recomputes `gamesSinceLast1x`, `gamesSinceLast1000x`, `gamesSinceDouble1x` from the DB so counters survive restarts. Without this, streaks would reset to 0 on every process start.
+
+`buildTemperature()` labels the current stretch `cold | regular | hot` for the live dashboard. It reads the last `TEMPERATURE_WINDOW` rows (300 by default, ~2h on any of the three sites at ~130 rounds/h), takes the share that ended `< 2x`, and scores it as a z-score against the site's all-time share with the window excluded; `|z| >= TEMPERATURE_Z` (2) flips the label, positive meaning colder. Design points, all deliberate:
+
+- The under-2x share is the statistic, not the instant-crash rate. It sits near 50% so 300 rounds have real power (σ ≈ 2.9 pp); instants are ~2% on Stake and ~5% on Roobet, so a window holds only 6–14 of them and the label would flip on ordinary noise. Instant count vs. expected is returned for display only.
+- The baseline is **per site** — Roobet's instant rate is more than double Stake's — and is per-site by construction since each store owns one file.
+- The all-time counts are read with one full scan at store creation (~0.1s on 600k rows) and then kept exact in memory by `insert()`, which only increments them when `INSERT OR IGNORE` actually wrote a row. The hot path therefore does one indexed `LIMIT 300` read per crash, nothing else.
+- It returns `null` until the archive holds at least `2 × TEMPERATURE_WINDOW` rows, so a fresh site shows `--` instead of comparing a window with itself.
+
+`buildStreakOdds()` feeds the live dashboard's "cold streak watch": the run of consecutive rounds under `STREAK_UNDER_X` the archive currently ends on, the longest ever, how many runs reached `STREAK_MIN_LEN`, the latest such run, and the probability of one starting in the next hour / day / week. The run-length state machine (`feedStreak`) is seeded by one chronological scan at store creation (~0.4s on 600k rows, ordered by `rowid` like everything else) and then advanced by `insert()` for each row actually written, so it is exact without rescanning. Odds are `(1-p)·p^minLen` per round with `p` the all-time under-threshold share, treated as a Poisson rate at the observed rounds/day, where "observed" excludes inter-row gaps over 10 min so capture outages do not deflate it. It is deliberately model-based rather than counting past events: 13 events is too few for an empirical rate, and independence is the game's own claim. Returns `null` under 1000 rows.
 
 ### Per-site monitor (`lib/monitor.js`)
 
@@ -142,17 +154,19 @@ The failure mode this exists for: the process stays alive and the event loop kee
 Three WS message shapes, all JSON strings, **all tagged with `site`**:
 
 ```js
-{ type: 'history', site, results: [...up to 1000 rows...], streaks: {...} }  // one per site, on connect
+{ type: 'history', site, results: [...up to 1000 rows...], streaks: {...}, temperature, streakOdds }  // one per site, on connect
 { type: 'live',    site, state:   { status, multiplier, gameId } }          // every CDP frame for {in_progress, starting, crash, start}
-{ type: 'result',  site, result:  { gameId, multiplier, timestamp, ts_ms, ...streaks } } // only on status === 'crash'
+{ type: 'result',  site, result:  { gameId, multiplier, timestamp, ts_ms, ...streaks }, temperature, streakOdds } // only on status === 'crash'
 ```
+
+`temperature` and `streakOdds` are the `buildTemperature()` / `buildStreakOdds()` objects (or `null`), recomputed after the row is inserted so they already include it.
 
 Every client gets every site's stream; the frontend keeps a state bag per site and renders only the active tab. Adding a new message type means handling it in `public/app.js` (`ws.onmessage` switch).
 
 ### Frontend (`public/`)
 
 - `site-tabs.js` — shared tab bar. Builds tabs from `/api/sites`, mirrors the selection into `?site=` and `localStorage`, and rewrites `a.nav-link[data-keep-site]` hrefs so the site follows you across pages. URL wins over the remembered tab so shared links open their site.
-- `index.html` + `app.js` — live dashboard. State is `{ site, sites: { <key>: { results, streaks, liveGame } }, chart }`; background sites keep accumulating data but touch no DOM. Notable: `animateMultiplier()` runs in `requestAnimationFrame` and *predicts* the live multiplier by drifting it upward ~6%/sec when status is `in_progress`, then snaps toward the server's last value with a 0.2 lerp factor and a `+0.1x` ceiling. Without this, the displayed number stutters between WS frames. If you change crash-rate constants on the server, mirror them here.
+- `index.html` + `app.js` — live dashboard. State is `{ site, sites: { <key>: { results, streaks, temperature, liveGame } }, chart }`; the temperature strip and the cold streak watch under the live display are rendered by `updateTemperature()` / `updateStreakOdds()` from the server's objects only — the page never recomputes them, so the two sides cannot disagree. The gauge spans −3…+3 σ with the ±2 σ "regular" band marked; background sites keep accumulating data but touch no DOM. Notable: `animateMultiplier()` runs in `requestAnimationFrame` and *predicts* the live multiplier by drifting it upward ~6%/sec when status is `in_progress`, then snaps toward the server's last value with a 0.2 lerp factor and a `+0.1x` ceiling. Without this, the displayed number stutters between WS frames. If you change crash-rate constants on the server, mirror them here.
 - `analytics.html` + `analytics.js` — period-windowed dashboard, fetches `/api/analytics?site=&period=` and renders five Chart.js charts + two card grids + Top 10 table. State is `{ site, period, charts, reqId }`; `destroyCharts()` must be called before re-rendering or Chart.js will leak canvases, and `reqId` drops responses for a tab you already left.
 - Both pages share `style.css` (dark theme, brutalist cards).
 

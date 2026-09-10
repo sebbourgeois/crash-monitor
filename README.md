@@ -32,7 +32,7 @@ Each site is fully independent — its own browser, its own database, its own st
 - **Multi-site capture** — three sites monitored side by side, each in its own browser and database. Adding a fourth is one entry in `lib/sites.js`.
 - **Real-time interception** — Puppeteer + CDP (`Network.webSocketFrameReceived`) taps each live crash stream. Stake and Shuffle send GraphQL JSON; Roobet sends packed binary Socket.IO frames. All three are normalized to one event shape.
 - **SQLite persistence** — every round written via `better-sqlite3` in WAL mode, with an indexed millisecond timestamp for fast time-window queries.
-- **Live dashboard** — WebSocket-pushed multiplier ticker, streak counters, result pills and a live distribution histogram.
+- **Live dashboard** — WebSocket-pushed multiplier ticker, streak counters, result pills, a live distribution histogram and a **cold / regular / hot** temperature gauge for the current stretch.
 - **Analytics dashboard** — period selector from `1h` to `all` over volume, mean, p90/p99, distribution, rare-event gaps and Top 10 multipliers.
 - **Monthly archives** — `dump-monthly.sh` exports per-month CSV + JSON stats for every site, ready to schedule with cron. The output is committed, so this repo doubles as a [public dataset](#public-dataset) of 639k+ rounds.
 - **Notifications** — console, Telegram and desktop alerts for instant crashes (`< 1.01x`) and 1000x+ moon shots, labelled by site.
@@ -98,6 +98,9 @@ All configuration is via environment variables; a `.env` file in the project roo
 | `WATCHDOG_STALE_MS` | `180000` | How long without a new result counts as stalled |
 | `WATCHDOG_CHECK_MS` | `30000` | How often staleness is checked |
 | `BROWSER_RECYCLE_MS` | `21600000` | Relaunch each site's browser this often (6h) to shed page leaks; `0` disables |
+| `TEMPERATURE_WINDOW` | `300` | Rounds compared against the all-time baseline for the live dashboard's cold / regular / hot gauge (min 50) |
+| `STREAK_UNDER_X` | `2.2` | Cold streak watch: a run is consecutive rounds that all ended under this multiplier |
+| `STREAK_MIN_LEN` | `16` | Cold streak watch: run length that counts as an event (min 2) |
 
 > [!TIP]
 > To find your `TELEGRAM_CHAT_ID`, message your bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy the `chat.id` field.
@@ -117,6 +120,8 @@ Every site streams over the same WebSocket, so switching tabs is instant and bac
 - Headline stats: average, median and max across the last 1000 rounds
 - Streak counters: games since the last `<1.01x`, `1000x+`, and back-to-back `<1.01x`
 - Live distribution histogram and animated result pills with optional audio cues
+- Temperature gauge: is the current stretch **COLD**, **REGULAR** or **HOT**? It takes the last `TEMPERATURE_WINDOW` rounds (300 by default, about two hours), measures the share that ended under 2x, and scores it as a z-score against that site's own all-time share. Beyond ±2 standard deviations the label flips to COLD (more early crashes than usual) or HOT (fewer). Under an unchanged game that happens about 5% of the time, so the label is a sanity check for the "it's been crashing early all evening" feeling rather than a signal. The instant-crash count for the window is shown next to its expected value for the same reason.
+- Cold streak watch: how many rounds in a row have ended under `STREAK_UNDER_X` (2.2x) right now, the site's record, how many runs of `STREAK_MIN_LEN`+ (16) the archive holds and when the last one was, plus the odds of one starting in the next hour / 24h / 7 days. The odds treat every round as an independent draw at the site's own all-time under-threshold share, scaled by its observed rounds per day, so they read the same on any day regardless of when the last run happened. On Stake a 16+ run under 2.2x is a roughly-fortnightly event (about 9% on any given day). It is a probability, not a prediction — the widget is there to put a number on the "it's been under 2x forever" feeling, not to time anything.
 
 ### Analytics (`/analytics.html`)
 
@@ -291,14 +296,41 @@ The monitor exposes a small surface, used by the bundled dashboards. Everything 
 **WebSocket** (`ws://<host>:<port>/`) — every client receives every site's stream, and each message carries the `site` it belongs to. There are three shapes:
 
 ```jsonc
-// 1. On connect: one per site — last 1000 results + current streaks
-{ "type": "history", "site": "shuffle", "results": [ ... ], "streaks": { ... } }
+// 1. On connect: one per site — last 1000 results, current streaks, the temperature gauge and the cold streak watch
+{ "type": "history", "site": "shuffle", "results": [ ... ], "streaks": { ... }, "temperature": { ... }, "streakOdds": { ... } }
 
 // 2. Live state on every frame (in_progress / starting / crash / start)
 { "type": "live", "site": "stake", "state": { "status": "in_progress", "multiplier": 1.42, "gameId": "..." } }
 
-// 3. Persisted round
-{ "type": "result", "site": "stake", "result": { "gameId": "...", "multiplier": 7.31, "ts_ms": 1716123456789, ... } }
+// 3. Persisted round, with the temperature and streak watch recomputed to include it
+{ "type": "result", "site": "stake", "result": { "gameId": "...", "multiplier": 7.31, "ts_ms": 1716123456789, ... }, "temperature": { ... }, "streakOdds": { ... } }
+```
+
+`temperature` is `null` until the site has at least twice `TEMPERATURE_WINDOW` rounds archived, otherwise:
+
+```jsonc
+{
+  "window": 300, "label": "cold",          // "cold" | "regular" | "hot"
+  "z": 2.04, "threshold": 2,               // z-score of the under-2x share; |z| >= threshold flips the label
+  "pctLt2": 56.3, "instants": 7, "expectedInstants": 5.9,
+  "baseline": { "total": 612563, "pctLt2": 50.4, "pctInstant": 1.95 }
+}
+```
+
+`streakOdds` is `null` until the site has 1000 rounds archived, otherwise:
+
+```jsonc
+{
+  "threshold": 2.2, "minLen": 16,
+  "current": 3,                             // consecutive rounds under threshold the archive currently ends on
+  "longest": 19, "count": 13,               // record run, and runs that reached minLen
+  "last": { "len": 19, "startMs": 1788..., "endMs": 1788... },   // latest run that reached minLen, or null
+  "total": 617565, "pUnder": 0.5496,        // rounds archived; all-time share under threshold
+  "perRound": 3.12e-5,                      // chance a given round starts a minLen+ run: (1-p)·p^minLen
+  "reach": 0.0003,                          // chance the current run goes on to reach minLen
+  "roundsPerDay": 3053, "coveredDays": 202.3, "observedPerDay": 0.064,
+  "odds": { "hour": 0.004, "day": 0.091, "week": 0.487 }        // P(at least one run starts in the window)
+}
 ```
 
 ## Data model

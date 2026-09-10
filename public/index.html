@@ -33,6 +33,39 @@
         <div class="live-status" id="live-status">WAITING</div>
         <div class="live-multiplier" id="live-multiplier">1.00x</div>
       </div>
+
+      <div class="temp-strip" id="temp-strip" data-label="none">
+        <div class="temp-head">
+          <div class="stat-label">Temperature <span class="temp-window" id="temp-window"></span></div>
+          <div class="temp-label" id="temp-label">--</div>
+        </div>
+        <div class="temp-gauge" title="Standard deviations from this site's all-time share of rounds under 2x. Right = more early crashes.">
+          <span class="temp-tick hot">HOT</span>
+          <div class="temp-track">
+            <span class="temp-band"></span>
+            <span class="temp-marker" id="temp-marker"></span>
+          </div>
+          <span class="temp-tick cold">COLD</span>
+        </div>
+        <div class="temp-detail" id="temp-detail">Waiting for enough history…</div>
+      </div>
+
+      <div class="temp-strip streak-strip" id="streak-strip" data-state="none" title="Odds assume every round is an independent draw at this site's all-time under-threshold rate. They are the same on any day, whenever the last run happened — a probability, not a prediction.">
+        <div class="temp-head">
+          <div class="stat-label">Cold streak watch <span class="temp-window" id="streak-rule"></span></div>
+          <div class="temp-label streak-current"><span id="streak-current">--</span><span class="streak-of" id="streak-of"></span></div>
+        </div>
+        <div class="streak-gauge">
+          <div class="streak-track">
+            <span class="streak-fill" id="streak-fill"></span>
+          </div>
+          <div class="streak-caption" id="streak-caption">Consecutive rounds under threshold, right now</div>
+        </div>
+        <div class="temp-detail streak-detail">
+          <div id="streak-odds">Not enough history yet.</div>
+          <div id="streak-history"></div>
+        </div>
+      </div>
     </section>
 
     <div class="dashboard-grid">

@@ -246,7 +246,9 @@ function setupServer() {
         type: 'history',
         site: m.site.key,
         results: m.store.readHistory(1000),
-        streaks: m.streaks
+        streaks: m.streaks,
+        temperature: m.store.buildTemperature(),
+        streakOdds: m.store.buildStreakOdds()
       }));
       ws.send(JSON.stringify({ type: 'live', site: m.site.key, state: m.liveState }));
     }

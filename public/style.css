@@ -18,6 +18,8 @@
   --line:      #232327;
   --line-bold: #36363c;
   --acid:      #ccff00;   /* structural brand neon */
+  --cold:      #4da3ff;   /* temperature indicator only — not a multiplier tier */
+  --hot:       #ff5c1a;
 
   /* locked multiplier tiers */
   --red:       #f6465d;
@@ -333,6 +335,145 @@ h2 {
 }
 
 /* ============================================================
+   TEMPERATURE STRIP (cold / regular / hot, server-computed)
+   ============================================================ */
+.temp-strip {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 22px;
+  margin-top: 28px;
+  padding: 14px 20px;
+  background: var(--panel);
+  border: 2px solid var(--line-bold);
+  border-left: 8px solid var(--line-bold);
+  box-shadow: var(--hard) var(--shadow-gray);
+  transition: border-left-color 0.3s;
+}
+.temp-strip[data-label="cold"]    { border-left-color: var(--cold); }
+.temp-strip[data-label="hot"]     { border-left-color: var(--hot); }
+.temp-strip[data-label="regular"] { border-left-color: var(--acid); }
+
+.temp-head .stat-label { margin-bottom: 6px; white-space: nowrap; }
+.temp-window { color: var(--ink-faint); letter-spacing: 0.08em; text-transform: none; }
+
+.temp-label {
+  font-family: var(--disp);
+  font-size: 1.6rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  min-width: 7ch;
+}
+.temp-strip[data-label="cold"]    .temp-label { color: var(--cold); text-shadow: 0 0 22px rgba(77,163,255,0.45); }
+.temp-strip[data-label="hot"]     .temp-label { color: var(--hot);  text-shadow: 0 0 22px rgba(255,92,26,0.45); }
+.temp-strip[data-label="regular"] .temp-label { color: var(--acid); }
+
+.temp-gauge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 220px;
+}
+.temp-tick {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+}
+.temp-tick.hot  { color: var(--hot); }
+.temp-tick.cold { color: var(--cold); }
+
+/* -3 sd on the left, +3 sd on the right; the band is the ±2 sd "regular" zone */
+.temp-track {
+  position: relative;
+  flex: 1;
+  height: 12px;
+  border: 2px solid var(--line-bold);
+  background: linear-gradient(90deg, var(--hot), var(--bg-deep) 40%, var(--bg-deep) 60%, var(--cold));
+}
+.temp-band {
+  position: absolute;
+  top: -2px; bottom: -2px;
+  left: calc(100% / 6);
+  right: calc(100% / 6);
+  border-left: 2px solid var(--line-bold);
+  border-right: 2px solid var(--line-bold);
+  pointer-events: none;
+}
+.temp-marker {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 6px;
+  height: 24px;
+  margin-left: -3px;
+  background: var(--ink);
+  border: 2px solid #000;
+  box-shadow: 3px 3px 0 0 #000;
+  transition: left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.temp-strip[data-label="none"] .temp-marker { opacity: 0.25; }
+
+.temp-detail {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--ink-dim);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------
+   COLD STREAK WATCH — same chassis as the temperature strip
+   ------------------------------------------------------------ */
+.streak-strip { margin-top: 12px; }
+.streak-strip[data-state="idle"]     { border-left-color: var(--line-bold); }
+.streak-strip[data-state="building"] { border-left-color: var(--orange); }
+.streak-strip[data-state="active"]   { border-left-color: var(--cold); }
+
+.streak-current { min-width: 7ch; white-space: nowrap; }
+.streak-strip[data-state="building"] .streak-current { color: var(--orange); }
+.streak-strip[data-state="active"]   .streak-current { color: var(--cold); text-shadow: 0 0 22px rgba(77,163,255,0.45); }
+.streak-of {
+  font-size: 0.9rem;
+  color: var(--ink-faint);
+  margin-left: 6px;
+  letter-spacing: 0;
+}
+
+.streak-gauge { min-width: 220px; }
+.streak-track {
+  position: relative;
+  height: 12px;
+  border: 2px solid var(--line-bold);
+  background: var(--bg-deep);
+  overflow: hidden;
+}
+.streak-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--ink-dim);
+  transition: width 0.4s ease, background-color 0.3s;
+}
+.streak-strip[data-state="building"] .streak-fill { background: var(--orange); }
+.streak-strip[data-state="active"]   .streak-fill { background: var(--cold); }
+.streak-caption {
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.streak-detail { display: grid; gap: 4px; }
+.streak-detail > div:last-child { color: var(--ink-faint); }
+
+/* ============================================================
    DASHBOARD GRID
    ============================================================ */
 .dashboard-grid {
@@ -594,6 +735,8 @@ h2 {
   header { margin: 0 -16px 28px; padding: 14px 16px; }
   .live-display { padding: 44px 16px 40px; }
   .live-status { letter-spacing: 0.28em; }
+  .temp-strip { grid-template-columns: 1fr; gap: 14px; }
+  .temp-detail, .streak-caption { text-align: left; white-space: normal; }
   .stats-container { grid-template-columns: repeat(2, 1fr); }
   .streak-container { grid-template-columns: 1fr; }
   .panel { padding: 28px 16px 20px; }
