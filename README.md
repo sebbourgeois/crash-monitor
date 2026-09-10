@@ -10,7 +10,7 @@
 [![Read only](https://img.shields.io/badge/mode-read--only-blue?style=flat-square)](#)
 [![Archive](https://img.shields.io/badge/dataset-639k%20rounds-8b5cf6?style=flat-square)](#public-dataset)
 
-[Quick start](#quick-start) &nbsp;•&nbsp; [Dashboards](#dashboards) &nbsp;•&nbsp; [Public dataset](#public-dataset) &nbsp;•&nbsp; [API](#http--websocket-api) &nbsp;•&nbsp; [Deployment](#deployment)
+[Quick start](#quick-start) &nbsp;•&nbsp; [Configuration](#configuration) &nbsp;•&nbsp; [Dashboards](#dashboards) &nbsp;•&nbsp; [Public dataset](#public-dataset) &nbsp;•&nbsp; [API](#http--websocket-api) &nbsp;•&nbsp; [Architecture](#architecture) &nbsp;•&nbsp; [Deployment](#deployment)
 
 </div>
 
@@ -22,7 +22,7 @@ A headless browser attaches to each site's Crash page over the Chrome DevTools P
 | **Shuffle.com** | `shuffle.com/games/originals/crash` | `shuffle_crash_results.db` | [`db-archives-shuffle/`](./db-archives-shuffle) |
 | **Roobet.com** | `roobet.com/casino/game/crash` | `roobet_crash_results.db` | `db-archives-roobet/` |
 
-Each site is fully independent — its own browser, its own database, its own streak counters, its own stall watchdog — so one site going down never disturbs the others' archives.
+Each site is fully independent — its own browser, database, streak counters and stall watchdog — so one site going down never disturbs the others' archives.
 
 > [!NOTE]
 > This tool is **read-only**. It observes the public crash feeds without placing bets, clicking, or otherwise interacting with the pages. It is intended for statistical analysis, research and learning.
@@ -30,20 +30,20 @@ Each site is fully independent — its own browser, its own database, its own st
 ## Features
 
 - **Multi-site capture** — three sites monitored side by side, each in its own browser and database. Adding a fourth is one entry in `lib/sites.js`.
-- **Real-time interception** — Puppeteer + CDP (`Network.webSocketFrameReceived`) taps each live crash stream. Stake and Shuffle send GraphQL JSON; Roobet sends packed binary Socket.IO frames. All three are normalized to one event shape.
+- **Real-time interception** — Puppeteer + CDP (`Network.webSocketFrameReceived`) taps each live crash stream. Stake and Shuffle send GraphQL JSON, Roobet sends packed binary Socket.IO frames; all three are normalized to one event shape.
 - **SQLite persistence** — every round written via `better-sqlite3` in WAL mode, with an indexed millisecond timestamp for fast time-window queries.
-- **Live dashboard** — WebSocket-pushed multiplier ticker, streak counters, result pills, a live distribution histogram and a **cold / regular / hot** temperature gauge for the current stretch.
+- **Live dashboard** — WebSocket-pushed multiplier ticker, streak counters, result pills, a live distribution histogram, a **cold / regular / hot** temperature gauge and a cold streak watch.
 - **Analytics dashboard** — period selector from `1h` to `all` over volume, mean, p90/p99, distribution, rare-event gaps and Top 10 multipliers.
 - **Monthly archives** — `dump-monthly.sh` exports per-month CSV + JSON stats for every site, ready to schedule with cron. The output is committed, so this repo doubles as a [public dataset](#public-dataset) of 639k+ rounds.
 - **Notifications** — console, Telegram and desktop alerts for instant crashes (`< 1.01x`) and 1000x+ moon shots, labelled by site.
-- **Resilient** — per-site browser relaunch on disconnect, a per-site [stall watchdog](#stall-watchdog) for silent feed outages, and `/api/health` for external probes.
+- **Resilient** — per-site browser relaunch on disconnect, a [stall watchdog](#reliability) for silent feed outages, scheduled browser recycling to shed page leaks, and `/api/health` for external probes.
 - **Deployable** — ships with a `systemd` unit template and a production `Dockerfile` / Compose setup with a persistent volume.
 
 ## Requirements
 
 - **Node.js 22.12+** (required by Puppeteer 25, enforced via `engines`)
 - A working Chromium — Puppeteer downloads its own; on Linux a few shared libraries may be missing (see [Troubleshooting](#troubleshooting))
-- …or just **Docker**, if you'd rather install nothing else
+- …or just **Docker**, if you would rather install nothing else
 
 ## Quick start
 
@@ -94,11 +94,11 @@ All configuration is via environment variables; a `.env` file in the project roo
 | `TELEGRAM_CHAT_ID` | — | Target chat ID for alerts |
 | `TELEGRAM_SITES` | `all` | Which sites push to Telegram: `all`, `none`, or a comma-separated list of site keys (`stake,shuffle`). Console and desktop notifications ignore it |
 | `DESKTOP_NOTIFICATIONS_ENABLED` | `false` | Native desktop alerts via `node-notifier` |
-| `WATCHDOG_ENABLED` | `true` | Stall watchdog (see [below](#stall-watchdog)) |
+| `WATCHDOG_ENABLED` | `true` | Stall watchdog (see [Reliability](#reliability)) |
 | `WATCHDOG_STALE_MS` | `180000` | How long without a new result counts as stalled |
 | `WATCHDOG_CHECK_MS` | `30000` | How often staleness is checked |
 | `BROWSER_RECYCLE_MS` | `21600000` | Relaunch each site's browser this often (6h) to shed page leaks; `0` disables |
-| `TEMPERATURE_WINDOW` | `300` | Rounds compared against the all-time baseline for the live dashboard's cold / regular / hot gauge (min 50) |
+| `TEMPERATURE_WINDOW` | `300` | Rounds compared against the all-time baseline for the cold / regular / hot gauge (min 50) |
 | `STREAK_UNDER_X` | `2.2` | Cold streak watch: a run is consecutive rounds that all ended under this multiplier |
 | `STREAK_MIN_LEN` | `16` | Cold streak watch: run length that counts as an event (min 2) |
 
@@ -112,7 +112,7 @@ All configuration is via environment variables; a `.env` file in the project roo
 
 Both pages open with a **Stake.com / Shuffle.com / Roobet.com** tab bar. The selected site is mirrored into `?site=` and remembered locally, so a tab survives a reload, follows you across the Live ↔ Analytics link, and can be shared as a direct link (`/?site=shuffle`). A site with capture disabled is marked with a red square and still serves its archive.
 
-Every site streams over the same WebSocket, so switching tabs is instant and background sites keep updating — nothing is missed while you look at another one.
+Every site streams over the same WebSocket, so switching tabs is instant and background sites keep updating in the meantime.
 
 ### Live (`/`)
 
@@ -120,8 +120,8 @@ Every site streams over the same WebSocket, so switching tabs is instant and bac
 - Headline stats: average, median and max across the last 1000 rounds
 - Streak counters: games since the last `<1.01x`, `1000x+`, and back-to-back `<1.01x`
 - Live distribution histogram and animated result pills with optional audio cues
-- Temperature gauge: is the current stretch **COLD**, **REGULAR** or **HOT**? It takes the last `TEMPERATURE_WINDOW` rounds (300 by default, about two hours), measures the share that ended under 2x, and scores it as a z-score against that site's own all-time share. Beyond ±2 standard deviations the label flips to COLD (more early crashes than usual) or HOT (fewer). Under an unchanged game that happens about 5% of the time, so the label is a sanity check for the "it's been crashing early all evening" feeling rather than a signal. The instant-crash count for the window is shown next to its expected value for the same reason.
-- Cold streak watch: how many rounds in a row have ended under `STREAK_UNDER_X` (2.2x) right now, the site's record, how many runs of `STREAK_MIN_LEN`+ (16) the archive holds and when the last one was, plus the odds of one starting in the next hour / 24h / 7 days. The odds treat every round as an independent draw at the site's own all-time under-threshold share, scaled by its observed rounds per day, so they read the same on any day regardless of when the last run happened. On Stake a 16+ run under 2.2x is a roughly-fortnightly event (about 9% on any given day). It is a probability, not a prediction — the widget is there to put a number on the "it's been under 2x forever" feeling, not to time anything.
+- **Temperature gauge** — is the current stretch **COLD**, **REGULAR** or **HOT**? It takes the last `TEMPERATURE_WINDOW` rounds (about two hours), measures the share that ended under 2x, and scores it as a z-score against that site's own all-time share. Beyond ±2σ the label flips to COLD (more early crashes than usual) or HOT (fewer). Under an unchanged game that happens about 5% of the time, so it is a sanity check for the "it's been crashing early all evening" feeling, not a signal.
+- **Cold streak watch** — how many rounds in a row have ended under `STREAK_UNDER_X` right now, the site's record, how many runs of `STREAK_MIN_LEN`+ the archive holds and when the last one was, plus the odds of one starting in the next hour / day / week. The odds treat every round as an independent draw at the site's all-time under-threshold share, scaled by its observed rounds per day. On Stake a 16+ run under 2.2x is a roughly fortnightly event (about 9% on any given day). It is a probability, not a prediction.
 
 ### Analytics (`/analytics.html`)
 
@@ -183,7 +183,7 @@ git clone --depth 1 https://github.com/sebbourgeois/stake-crash-archives.git
 # archives only, without the app or the git history
 git clone --depth 1 --filter=blob:none --sparse \
   https://github.com/sebbourgeois/stake-crash-archives.git
-cd stake-crash-archives && git sparse-checkout set db-archives
+cd stake-crash-archives && git sparse-checkout set db-archives db-archives-shuffle
 
 # or a single month, straight over HTTP
 curl -O https://raw.githubusercontent.com/sebbourgeois/stake-crash-archives/master/db-archives/crash_2026-07.csv
@@ -234,11 +234,11 @@ Because `-d` and `-o` describe a single archive, they may only be combined with 
 Re-running overwrites: previously generated files are wiped first, so stale months never linger. With `-m` the wipe is scoped to the selected months, and the roll-ups are rebuilt from every summary present in the output directory.
 
 > [!IMPORTANT]
-> The script needs a Node that can load the compiled `better-sqlite3` binding. It probes `$NODE_BIN`, then `PATH`, then any nvm-installed versions, and uses the first that works — so a mismatched `node` on `PATH` is not a problem. If none work, run `npm rebuild better-sqlite3` or set `NODE_BIN=/path/to/node`.
+> The script needs a Node that can load the compiled `better-sqlite3` binding. It probes `$NODE_BIN`, then `PATH`, then any nvm-installed versions, and uses the first that works. If none do, run `npm rebuild better-sqlite3` or set `NODE_BIN=/path/to/node`.
 
 ### Scheduling with cron
 
-`dump-last-month.sh` is the cron entry point: it resolves the previous calendar month and hands it to `dump-monthly.sh`, leaving all other months untouched. It covers every site that has a database, so this single line did not change when Shuffle and Roobet were added.
+`dump-last-month.sh` is the cron entry point: it resolves the previous calendar month and hands it to `dump-monthly.sh`, leaving all other months untouched. It covers every site that has a database, so one line is enough:
 
 ```cron
 5 0 1 * * /path/to/stake-crash-archives/dump-last-month.sh >> /path/to/stake-crash-archives/dump-monthly.log 2>&1
@@ -253,10 +253,12 @@ Refreshing a fork's archives is then two commands — re-running overwrites in p
 
 ```bash
 ./dump-last-month.sh
-git add db-archives && git commit -m "Archive $(date -u -d 'last month' +%Y-%m)"
+git add db-archives db-archives-shuffle db-archives-roobet && git commit -m "Archive $(date -u -d 'last month' +%Y-%m)"
 ```
 
-## Stall watchdog
+## Reliability
+
+### Stall watchdog
 
 A capture can stall silently: the process stays alive and the event loop keeps running, but a site stops delivering WebSocket frames. Nothing throws, so neither the retry loop nor the supervisor notices — this repo's own Stake database has a 7.8 h gap and a 54 h gap that both happened inside a single long-lived PID.
 
@@ -270,7 +272,13 @@ A capture can stall silently: the process stays alive and the event loop keeps r
 Tier 1 is routine self-healing and only logs; tier 2 sends a Telegram alert, re-sent roughly hourly while the outage lasts rather than once per window.
 
 > [!NOTE]
-> Threshold trade-off, measured over 90 days of this database: gaps longer than 3 min happen ~57 times, longer than 5 min 12 times, longer than 6 min 7 times — and every gap past 6 min was a real outage. So the default fires a cheap browser relaunch every other day or so and only restarts the service when it matters. Raise `WATCHDOG_STALE_MS` to `300000` if you would rather it stay quieter.
+> Threshold trade-off, measured over 90 days of Stake data: gaps longer than 3 min happened 57 times, longer than 5 min 12 times, longer than 6 min 7 times — and every gap past 6 min was a real outage. So the default fires a cheap browser relaunch every other day or so and only restarts the service when it matters. Raise `WATCHDOG_STALE_MS` to `300000` if you would rather it stay quieter.
+
+### Scheduled browser recycling
+
+The three crash pages are single-page apps that leak while left open: a Stake renderer measured 2.1 GB after four days and a Roobet one 9.2 GB after 24 h. Each site's browser is therefore relaunched every `BROWSER_RECYCLE_MS` (6 h by default), and never mid-round — the relaunch waits for the next persisted crash, with a two-minute grace period if none arrives. A renderer that outgrows a 1 GB V8 heap is killed and relaunched by the retry loop as a backstop.
+
+The crash page is also parked behind a blank foreground tab once the listener is attached. That pauses the page's 60 fps canvas animation, which was costing roughly a CPU core per site, while frame delivery continues at the network layer.
 
 ## HTTP & WebSocket API
 
@@ -288,7 +296,8 @@ The monitor exposes a small surface, used by the bundled dashboards. Everything 
   "watchdogEnabled": true, "uptimeSeconds": 35,
   "sites": {
     "stake":   { "ok": true, "enabled": true, "staleSeconds": 26, "lastResultMs": 1786814197468, "staleStrikes": 0 },
-    "shuffle": { "ok": true, "enabled": true, "staleSeconds":  8, "lastResultMs": 1786814214855, "staleStrikes": 0 }
+    "shuffle": { "ok": true, "enabled": true, "staleSeconds":  8, "lastResultMs": 1786814214855, "staleStrikes": 0 },
+    "roobet":  { "ok": true, "enabled": true, "staleSeconds": 12, "lastResultMs": 1786814210911, "staleStrikes": 0 }
   }
 }
 ```
@@ -296,17 +305,17 @@ The monitor exposes a small surface, used by the bundled dashboards. Everything 
 **WebSocket** (`ws://<host>:<port>/`) — every client receives every site's stream, and each message carries the `site` it belongs to. There are three shapes:
 
 ```jsonc
-// 1. On connect: one per site — last 1000 results, current streaks, the temperature gauge and the cold streak watch
+// 1. On connect, one per site: last 1000 results, current streaks, temperature gauge and cold streak watch
 { "type": "history", "site": "shuffle", "results": [ ... ], "streaks": { ... }, "temperature": { ... }, "streakOdds": { ... } }
 
-// 2. Live state on every frame (in_progress / starting / crash / start)
+// 2. Live state on every frame (starting / start / in_progress / crash)
 { "type": "live", "site": "stake", "state": { "status": "in_progress", "multiplier": 1.42, "gameId": "..." } }
 
-// 3. Persisted round, with the temperature and streak watch recomputed to include it
+// 3. Persisted round, with temperature and streak watch recomputed to include it
 { "type": "result", "site": "stake", "result": { "gameId": "...", "multiplier": 7.31, "ts_ms": 1716123456789, ... }, "temperature": { ... }, "streakOdds": { ... } }
 ```
 
-`temperature` is `null` until the site has at least twice `TEMPERATURE_WINDOW` rounds archived, otherwise:
+`temperature` is `null` until the site has at least twice `TEMPERATURE_WINDOW` rounds archived:
 
 ```jsonc
 {
@@ -317,19 +326,17 @@ The monitor exposes a small surface, used by the bundled dashboards. Everything 
 }
 ```
 
-`streakOdds` is `null` until the site has 1000 rounds archived, otherwise:
+`streakOdds` is `null` until the site has 1000 rounds archived:
 
 ```jsonc
 {
   "threshold": 2.2, "minLen": 16,
-  "current": 3,                             // consecutive rounds under threshold the archive currently ends on
-  "longest": 19, "count": 13,               // record run, and runs that reached minLen
+  "current": 3, "longest": 19, "count": 13,                      // current run, record run, runs that reached minLen
   "last": { "len": 19, "startMs": 1788..., "endMs": 1788... },   // latest run that reached minLen, or null
-  "total": 617565, "pUnder": 0.5496,        // rounds archived; all-time share under threshold
-  "perRound": 3.12e-5,                      // chance a given round starts a minLen+ run: (1-p)·p^minLen
-  "reach": 0.0003,                          // chance the current run goes on to reach minLen
+  "total": 617565, "pUnder": 0.5496,                             // rounds archived; all-time share under threshold
+  "perRound": 3.12e-5, "reach": 0.0003,                          // P(a round starts a minLen+ run); P(current run reaches minLen)
   "roundsPerDay": 3053, "coveredDays": 202.3, "observedPerDay": 0.064,
-  "odds": { "hour": 0.004, "day": 0.091, "week": 0.487 }        // P(at least one run starts in the window)
+  "odds": { "hour": 0.004, "day": 0.091, "week": 0.487 }         // P(at least one run starts in the window)
 }
 ```
 
@@ -347,7 +354,7 @@ CREATE TABLE crash_results (
 );
 ```
 
-Every site uses this identical schema in its **own file** — tables are never shared, so `gameId` only has to be unique within one site (Stake's are UUIDs, Shuffle's increasing integers, Roobet's Mongo ObjectIds). `gameId` is the primary key, so reconnects and restarts never produce duplicate rows. The schema is created on first launch; the `ts_ms` column is added and backfilled idempotently for older databases.
+Every site uses this identical schema in its **own file** — tables are never shared, so `gameId` only has to be unique within one site (Stake's are UUIDs, Shuffle's increasing integers, Roobet's Mongo ObjectIds). Because it is the primary key, reconnects and restarts never produce duplicate rows. The schema is created on first launch, and the `ts_ms` column is added and backfilled idempotently for older databases.
 
 ## Architecture
 
@@ -371,18 +378,18 @@ Every site uses this identical schema in its **own file** — tables are never s
 |---|---|
 | `capture.js` | Wiring only: builds one monitor per site, serves the API and WebSocket, owns the watchdog ladder and shutdown |
 | `lib/sites.js` | Everything site-specific — the page URL and the parser that normalizes one raw frame |
-| `lib/store.js` | One SQLite file: schema, migration, queries, analytics |
-| `lib/monitor.js` | One site's capture loop: browser, retry, streaks, dedupe, staleness clock |
+| `lib/store.js` | One SQLite file: schema, migration, queries, analytics, temperature and streak odds |
+| `lib/monitor.js` | One site's capture loop: browser, retry, recycle, streaks, dedupe, staleness clock |
 | `public/` | Both dashboards; `site-tabs.js` is shared by them |
 
 How a round travels through it:
 
 1. For each site, Puppeteer launches headless Chromium with anti-detection flags and loads that site's crash page.
 2. A CDP session subscribes to `Network.webSocketFrameReceived` — **after** navigation, because enabling `Network` on `about:blank` and then navigating makes Chrome stop delivering frames to that session.
-3. The site's `parseFrame()` normalizes each raw frame to `{ status, gameId, multiplier, timestamp }`. Stake's `MultiplayerCrash` GraphQL events, Shuffle's `CrashEventPayload` events and Roobet's packed binary Socket.IO payloads differ in wire format as well as in shape, and this is the only place those differences live.
+3. The site's `parseFrame()` normalizes each raw frame to `{ status, gameId, multiplier, timestamp }`. Stake's `MultiplayerCrash` GraphQL events, Shuffle's `CrashEventPayload` events and Roobet's binary Socket.IO payloads differ in wire format as well as in shape, and this is the only place those differences live.
 4. Live state is broadcast for `starting` / `start` / `in_progress` / `crash`; **only `crash` is persisted**, deduped by `gameId`.
 5. Express serves `public/` and exposes `/api/sites`, `/api/analytics` and `/api/health`; the `ws` server pushes site-tagged updates over the same HTTP server.
-6. Streak counters are seeded from each database at startup, so they survive restarts.
+6. Streak counters, the temperature baseline and the streak state machine are seeded from each database at startup, so they survive restarts.
 
 ### Adding a site
 
