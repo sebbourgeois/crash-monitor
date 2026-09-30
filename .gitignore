@@ -20,6 +20,9 @@ shuffle_crash_results.db-shm
 roobet_crash_results.db
 roobet_crash_results.db-wal
 roobet_crash_results.db-shm
+goated_crash_results.db
+goated_crash_results.db-wal
+goated_crash_results.db-shm
 
 # Logs
 *.log

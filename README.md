@@ -2,7 +2,7 @@
 
 # Crash Monitor
 
-**Real-time capture, storage and analysis of the Stake.com, Shuffle.com and Roobet.com Crash feeds.**
+**Real-time capture, storage and analysis of the Stake.com, Shuffle.com, Roobet.com and Goated.com Crash feeds.**
 
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22.12-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![SQLite](https://img.shields.io/badge/storage-SQLite%20WAL-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
@@ -21,6 +21,7 @@ A headless browser attaches to each site's Crash page over the Chrome DevTools P
 | **Stake.com** | `stake.com/casino/games/crash` | `crash_results.db` | [`db-archives/`](./db-archives) |
 | **Shuffle.com** | `shuffle.com/games/originals/crash` | `shuffle_crash_results.db` | [`db-archives-shuffle/`](./db-archives-shuffle) |
 | **Roobet.com** | `roobet.com/casino/game/crash` | `roobet_crash_results.db` | `db-archives-roobet/` |
+| **Goated.com** | `goated.com/casino/originals/crash` | `goated_crash_results.db` | `db-archives-goated/` |
 
 Each site is fully independent — its own browser, database, streak counters and stall watchdog — so one site going down never disturbs the others' archives.
 
@@ -29,8 +30,8 @@ Each site is fully independent — its own browser, database, streak counters an
 
 ## Features
 
-- **Multi-site capture** — three sites monitored side by side, each in its own browser and database. Adding a fourth is one entry in `lib/sites.js`.
-- **Real-time interception** — Puppeteer + CDP (`Network.webSocketFrameReceived`) taps each live crash stream. Stake and Shuffle send GraphQL JSON, Roobet sends packed binary Socket.IO frames; all three are normalized to one event shape.
+- **Multi-site capture** — four sites monitored side by side, each in its own browser and database. Adding a fifth is one entry in `lib/sites.js`.
+- **Real-time interception** — Puppeteer + CDP (`Network.webSocketFrameReceived`) taps each live crash stream. Stake and Shuffle send GraphQL JSON, Goated plain JSON on a dedicated socket, Roobet packed binary Socket.IO frames; all four are normalized to one event shape.
 - **SQLite persistence** — every round written via `better-sqlite3` in WAL mode, with an indexed millisecond timestamp for fast time-window queries.
 - **Live dashboard** — WebSocket-pushed multiplier ticker, streak counters, result pills, a live distribution histogram, a **cold / regular / hot** temperature gauge and a cold streak watch.
 - **Analytics dashboard** — period selector from `1h` to `all` over volume, mean, p90/p99, distribution, rare-event gaps and Top 10 multipliers.
@@ -85,9 +86,11 @@ All configuration is via environment variables; a `.env` file in the project roo
 | `DB_PATH` | `crash_results.db` | Stake SQLite file (Compose sets `/data/crash_results.db`) |
 | `SHUFFLE_DB_PATH` | `shuffle_crash_results.db` | Shuffle SQLite file — never the same file as another site |
 | `ROOBET_DB_PATH` | `roobet_crash_results.db` | Roobet SQLite file — again, its own file |
+| `GOATED_DB_PATH` | `goated_crash_results.db` | Goated SQLite file — its own file too |
 | `STAKE_ENABLED` | `true` | `false` stops capturing Stake; its archive stays browsable |
 | `SHUFFLE_ENABLED` | `true` | Same for Shuffle |
 | `ROOBET_ENABLED` | `true` | Same for Roobet |
+| `GOATED_ENABLED` | `true` | Same for Goated |
 | `DASHBOARD_ENABLED` | `true` | `false` runs a capture-only daemon (skips Express + WS) |
 | `TELEGRAM_ENABLED` | `false` | Send extreme-event alerts via Telegram |
 | `TELEGRAM_BOT_TOKEN` | — | Bot token from [@BotFather](https://t.me/BotFather) |
@@ -106,11 +109,11 @@ All configuration is via environment variables; a `.env` file in the project roo
 > To find your `TELEGRAM_CHAT_ID`, message your bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy the `chat.id` field.
 
 > [!NOTE]
-> Each enabled site runs its own headless Chromium, so three sites need roughly three times the memory of one. Disable one with `ROOBET_ENABLED=false` if that is tight — its dashboard tab keeps serving whatever is already archived.
+> Each enabled site runs its own headless Chromium, so four sites need roughly four times the memory of one. Disable one with `GOATED_ENABLED=false` if that is tight — its dashboard tab keeps serving whatever is already archived.
 
 ## Dashboards
 
-Both pages open with a **Stake.com / Shuffle.com / Roobet.com** tab bar. The selected site is mirrored into `?site=` and remembered locally, so a tab survives a reload, follows you across the Live ↔ Analytics link, and can be shared as a direct link (`/?site=shuffle`). A site with capture disabled is marked with a red square and still serves its archive.
+Both pages open with a **Stake.com / Shuffle.com / Roobet.com / Goated.com** tab bar. The selected site is mirrored into `?site=` and remembered locally, so a tab survives a reload, follows you across the Live ↔ Analytics link, and can be shared as a direct link (`/?site=shuffle`). A site with capture disabled is marked with a red square and still serves its archive.
 
 Every site streams over the same WebSocket, so switching tabs is instant and background sites keep updating in the meantime.
 
@@ -172,6 +175,8 @@ The `.db` files are gitignored, but the generated monthly archives **are committ
 
 **Roobet** — capture started `2026-09-01`; `db-archives-roobet/` appears with the first monthly dump.
 
+**Goated** — capture started `2026-09-30`; `db-archives-goated/` appears with the first monthly dump.
+
 About 77 MB of CSV in total. Gaps within a month are capture downtime, not missing rounds in the game itself — each summary's `coverage.largestGapSeconds` tells you where.
 
 ### Getting the data
@@ -222,7 +227,7 @@ print(df.multiplier.describe(), (df.multiplier < 1.01).mean())
 
 | Option | Default | Description |
 |---|---|---|
-| `-s SITE` | every site with a DB on disk | `stake`, `shuffle` or `roobet`; repeatable |
+| `-s SITE` | every site with a DB on disk | `stake`, `shuffle`, `roobet` or `goated`; repeatable |
 | `-d DB` | the site's own DB | Path to the SQLite file |
 | `-o OUTDIR` | the site's own archive dir | Output directory |
 | `-m YYYY-MM` | every month | Only this month; repeatable |
@@ -253,7 +258,7 @@ Refreshing a fork's archives is then two commands — re-running overwrites in p
 
 ```bash
 ./dump-last-month.sh
-git add db-archives db-archives-shuffle db-archives-roobet && git commit -m "Archive $(date -u -d 'last month' +%Y-%m)"
+git add db-archives db-archives-shuffle db-archives-roobet db-archives-goated && git commit -m "Archive $(date -u -d 'last month' +%Y-%m)"
 ```
 
 ## Reliability
@@ -282,7 +287,7 @@ The crash page is also parked behind a blank foreground tab once the listener is
 
 ## HTTP & WebSocket API
 
-The monitor exposes a small surface, used by the bundled dashboards. Everything is scoped by a `site` key (`stake`, `shuffle`, `roobet`).
+The monitor exposes a small surface, used by the bundled dashboards. Everything is scoped by a `site` key (`stake`, `shuffle`, `roobet`, `goated`).
 
 **`GET /api/sites`** — the tab bar's source of truth: `[{ key, label, tab, url, enabled }, ...]`.
 
@@ -297,7 +302,8 @@ The monitor exposes a small surface, used by the bundled dashboards. Everything 
   "sites": {
     "stake":   { "ok": true, "enabled": true, "staleSeconds": 26, "lastResultMs": 1786814197468, "staleStrikes": 0 },
     "shuffle": { "ok": true, "enabled": true, "staleSeconds":  8, "lastResultMs": 1786814214855, "staleStrikes": 0 },
-    "roobet":  { "ok": true, "enabled": true, "staleSeconds": 12, "lastResultMs": 1786814210911, "staleStrikes": 0 }
+    "roobet":  { "ok": true, "enabled": true, "staleSeconds": 12, "lastResultMs": 1786814210911, "staleStrikes": 0 },
+    "goated":  { "ok": true, "enabled": true, "staleSeconds":  4, "lastResultMs": 1786814218602, "staleStrikes": 0 }
   }
 }
 ```
@@ -366,10 +372,14 @@ Every site uses this identical schema in its **own file** — tables are never s
 ┌──────────────┐  CDP   ┌───────┴────────┐
 │ shuffle.com  │ ─────► │monitor:shuffle │ ──► shuffle_crash_results.db ► db-archives-shuffle/
 └──────────────┘        └───────┬────────┘
+                                │
+┌──────────────┐  CDP   ┌───────┴────────┐
+│  roobet.com  │ ─────► │ monitor:roobet │ ──► roobet_crash_results.db ─► db-archives-roobet/
+└──────────────┘        └───────┬────────┘
                                 │                                         ┌──────────────┐
 ┌──────────────┐  CDP   ┌───────┴────────┐                                │  Dashboards  │
-│  roobet.com  │ ─────► │ monitor:roobet │ ──► roobet_crash_results.db ──► │ live / stats │
-└──────────────┘        └───────┬────────┘      └──► db-archives-roobet/   └──────▲───────┘
+│  goated.com  │ ─────► │ monitor:goated │ ──► goated_crash_results.db ──► │ live / stats │
+└──────────────┘        └───────┬────────┘      └──► db-archives-goated/   └──────▲───────┘
                                 │  tagged {site} broadcasts + /api/analytics      │
                                 └─────────────────────────────────────────────────┘
 ```

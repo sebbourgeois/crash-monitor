@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Node.js monitor for the Stake.com, Shuffle.com and Roobet.com Crash games. For each site, headless Puppeteer attaches a CDP session to intercept `Network.webSocketFrameReceived`, normalizes the site's frames to a common event shape, persists final results to that site's own SQLite file, and broadcasts live state to a bundled web dashboard with one tab per site. Read-only — never places bets or interacts with the pages.
+Node.js monitor for the Stake.com, Shuffle.com, Roobet.com and Goated.com Crash games. For each site, headless Puppeteer attaches a CDP session to intercept `Network.webSocketFrameReceived`, normalizes the site's frames to a common event shape, persists final results to that site's own SQLite file, and broadcasts live state to a bundled web dashboard with one tab per site. Read-only — never places bets or interacts with the pages.
 
 ## Commands
 
@@ -14,7 +14,7 @@ cp .env.example .env       # all flags optional; defaults work
 npm start                  # = node capture.js
 ```
 
-Then open `http://localhost:3000` (live dashboard) or `http://localhost:3000/analytics.html` (period-windowed analytics). Both have Stake.com / Shuffle.com / Roobet.com tabs; `?site=roobet` deep-links a tab.
+Then open `http://localhost:3000` (live dashboard) or `http://localhost:3000/analytics.html` (period-windowed analytics). Both have Stake.com / Shuffle.com / Roobet.com / Goated.com tabs; `?site=roobet` deep-links a tab.
 
 There is no test suite, linter, or build step — `capture.js` runs directly under Node 22.12+ (the floor Puppeteer 25 sets; declared in `engines`).
 
@@ -40,7 +40,8 @@ There is no test suite, linter, or build step — `capture.js` runs directly und
 | `DB_PATH` | `crash_results.db` | Stake's SQLite file |
 | `SHUFFLE_DB_PATH` | `shuffle_crash_results.db` | Shuffle's SQLite file — never point two sites at one file |
 | `ROOBET_DB_PATH` | `roobet_crash_results.db` | Roobet's SQLite file |
-| `STAKE_ENABLED` / `SHUFFLE_ENABLED` / `ROOBET_ENABLED` | `true` | `false` skips that site's browser; its archive is still served |
+| `GOATED_DB_PATH` | `goated_crash_results.db` | Goated's SQLite file |
+| `STAKE_ENABLED` / `SHUFFLE_ENABLED` / `ROOBET_ENABLED` / `GOATED_ENABLED` | `true` | `false` skips that site's browser; its archive is still served |
 | `DASHBOARD_ENABLED` | `true` | Set to `false` for capture-only daemon (skips Express + WS server) |
 | `TELEGRAM_ENABLED` | `false` | Only critical events (instant crash, 1000x+) are sent |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | Required when Telegram is on |
@@ -70,7 +71,7 @@ Startup order in `capture.js`, and it matters:
 
 `seedStreaks()` recomputes `gamesSinceLast1x`, `gamesSinceLast1000x`, `gamesSinceDouble1x` from the DB so counters survive restarts. Without this, streaks would reset to 0 on every process start.
 
-`buildTemperature()` labels the current stretch `cold | regular | hot` for the live dashboard. It reads the last `TEMPERATURE_WINDOW` rows (300 by default, ~2h on any of the three sites at ~130 rounds/h), takes the share that ended `< 2x`, and scores it as a z-score against the site's all-time share with the window excluded; `|z| >= TEMPERATURE_Z` (2) flips the label, positive meaning colder. Design points, all deliberate:
+`buildTemperature()` labels the current stretch `cold | regular | hot` for the live dashboard. It reads the last `TEMPERATURE_WINDOW` rows (300 by default, ~2h on any of the sites at ~130 rounds/h), takes the share that ended `< 2x`, and scores it as a z-score against the site's all-time share with the window excluded; `|z| >= TEMPERATURE_Z` (2) flips the label, positive meaning colder. Design points, all deliberate:
 
 - The under-2x share is the statistic, not the instant-crash rate. It sits near 50% so 300 rounds have real power (σ ≈ 2.9 pp); instants are ~2% on Stake and ~5% on Roobet, so a window holds only 6–14 of them and the label would flip on ordinary noise. Instant count vs. expected is returned for display only.
 - The baseline is **per site** — Roobet's instant rate is more than double Stake's — and is per-site by construction since each store owns one file.
@@ -101,7 +102,7 @@ The CDP Network listener is attached **after** navigation. Enabling Network on a
 
 This is the most error-prone area, and the only file that knows how the sites differ. Every parser returns `{ status, gameId, multiplier, timestamp? }` or `null`, with `status` in `starting | start | in_progress | crash`.
 
-`parseFrame()` receives the **raw CDP frame** (`{ opcode, payloadData }`), not a decoded object, because the wire format is itself a site difference: Stake and Shuffle send JSON text (opcode 1) while Roobet sends packed binary (opcode 2, base64-encoded by CDP). `monitor.js` therefore does no decoding at all. `jsonFrame(parse)` wraps the two JSON sites so `parseStakeFrame` / `parseShuffleFrame` stay pure functions of the decoded object; it drops binary frames and swallows JSON syntax errors. Do not move `JSON.parse` back into `monitor.js` — it would silently discard every Roobet frame.
+`parseFrame()` receives the **raw CDP frame** (`{ opcode, payloadData }`), not a decoded object, because the wire format is itself a site difference: Stake, Shuffle and Goated send JSON text (opcode 1) while Roobet sends packed binary (opcode 2, base64-encoded by CDP). `monitor.js` therefore does no decoding at all. `jsonFrame(parse)` wraps the JSON sites so `parseStakeFrame` / `parseShuffleFrame` / `parseGoatedFrame` stay pure functions of the decoded object; it drops binary frames and swallows JSON syntax errors. Do not move `JSON.parse` back into `monitor.js` — it would silently discard every Roobet frame.
 
 **Stake** — GraphQL subscription frames with `data.type` of `'data'` or `'next'`; the event is at `payload.data.crash?.event || payload.data.event` (both shapes are in use) and must have `__typename === 'MultiplayerCrash'`. Its status strings are already the normalized vocabulary. Multipliers are full floats.
 
@@ -125,6 +126,16 @@ Two consequences unique to this site:
 - **ticks carry no multiplier either** — the real client derives it from elapsed time. `ROOBET_GROWTH_PER_MS` (`6.014e-5`) and `ROOBET_LAUNCH_MS` (`233`) are a least-squares fit over 21 observed rounds, accurate to 0.5% from 1.01x to 28.23x, clamped at 1.00x. **Only the live display uses them.** The archived crash point is always the exact integer from phase 4, never a value computed from this curve, so a drift in Roobet's growth constant would cosmetically skew the ticker and leave the data correct.
 
 Also worth knowing: the last ~70 ticks of a Roobet round arrive as a burst with 1ms elapsed steps rather than 150ms, so live broadcasts clump at the end of each round. That is Roobet's behaviour, not a bug.
+
+**Goated** — a dedicated socket, `wss://casino-crash-websocket.goated.com/`, carrying only `{ type: 'crash_updates', data: [item] }` envelopes. Each item names the round in `r` (increasing integers, stringified for the PK) and has a `typ` of `update` (lifecycle), `tick` (~100ms, `v` = current multiplier, `t` = elapsed ms) or `participants` (other players' bets, ignored). Details that matter:
+
+- lifecycle statuses are `waiting → betting → in_progress → crashed`, mapped via `GOATED_STATUS`. `waiting` lasts ~20ms and `betting` is the 7s window; there is no bets-locked phase, so **both map to `starting`** — nothing on this site ever produces `start`;
+- every number is a decimal **string** at full float precision (`"24.72606013264511"`), including `crash_multiplier`, which is archived as-is — the site's UI rounds for display, the archive does not;
+- `at` is the server's epoch ms for that item, so the `crashed` update's `at` is the crash timestamp (~40ms ahead of receive time);
+- a `crashed` update without a usable `crash_multiplier` is dropped, same as Shuffle;
+- `data` has only ever held one item (1.6k frames observed on 2026-09-30), but it is an array, so `parseGoatedFrame` folds a batch to one event and a `crash` wins over any tick in the same batch.
+
+Goated's tick growth constant is the same `6.01e-5`/ms as Roobet's, but unlike Roobet the multiplier is sent on every tick, so nothing is derived client-side.
 
 ### Stall watchdog
 

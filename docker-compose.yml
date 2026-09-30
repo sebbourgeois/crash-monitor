@@ -11,9 +11,11 @@ services:
       DB_PATH: /data/crash_results.db
       SHUFFLE_DB_PATH: /data/shuffle_crash_results.db
       ROOBET_DB_PATH: /data/roobet_crash_results.db
+      GOATED_DB_PATH: /data/goated_crash_results.db
       STAKE_ENABLED: ${STAKE_ENABLED:-true}
       SHUFFLE_ENABLED: ${SHUFFLE_ENABLED:-true}
       ROOBET_ENABLED: ${ROOBET_ENABLED:-true}
+      GOATED_ENABLED: ${GOATED_ENABLED:-true}
       PORT: 3000
       DASHBOARD_ENABLED: ${DASHBOARD_ENABLED:-true}
       TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}

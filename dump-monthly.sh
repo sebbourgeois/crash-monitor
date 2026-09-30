@@ -8,6 +8,7 @@
 #   stake    crash_results.db          -> db-archives/
 #   shuffle  shuffle_crash_results.db  -> db-archives-shuffle/
 #   roobet   roobet_crash_results.db   -> db-archives-roobet/
+#   goated   goated_crash_results.db   -> db-archives-goated/
 #
 # For every calendar month (UTC) present in a DB it writes, in that site's dir:
 #   crash_YYYY-MM.csv           full rows for that month
@@ -23,7 +24,7 @@
 # Usage:
 #   ./dump-monthly.sh [-s SITE] [-d DB] [-o OUTDIR] [-m YYYY-MM] [-z] [-h]
 #
-#   -s SITE     stake|shuffle|roobet (repeatable) (default: every site with a DB on disk)
+#   -s SITE     stake|shuffle|roobet|goated (repeatable) (default: every site with a DB on disk)
 #   -d DB       path to the SQLite file      (default: the site's own DB)
 #   -o OUTDIR   output directory             (default: the site's own archive dir)
 #   -m YYYY-MM  only this month (repeatable) (default: every month in the DB)
@@ -39,16 +40,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # Site table — keep in sync with lib/sites.js (defaultDb) when adding a site.
-SITE_ORDER=(stake shuffle roobet)
+SITE_ORDER=(stake shuffle roobet goated)
 declare -A SITE_DB=(
   [stake]="crash_results.db"
   [shuffle]="shuffle_crash_results.db"
   [roobet]="roobet_crash_results.db"
+  [goated]="goated_crash_results.db"
 )
 declare -A SITE_OUT=(
   [stake]="db-archives"
   [shuffle]="db-archives-shuffle"
   [roobet]="db-archives-roobet"
+  [goated]="db-archives-goated"
 )
 
 DB=""
