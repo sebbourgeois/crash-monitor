@@ -271,8 +271,11 @@ async function cleanup(code = 0) {
   process.exit(code);
 }
 
+// SIGHUP too: Puppeteer's signal handlers are disabled (see lib/monitor.js), so
+// a closed terminal would otherwise kill node and orphan every browser.
 process.on('SIGINT', () => cleanup(0));
 process.on('SIGTERM', () => cleanup(0));
+process.on('SIGHUP', () => cleanup(0));
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
   cleanup(1);
