@@ -8,7 +8,8 @@
 [![Puppeteer](https://img.shields.io/badge/capture-Puppeteer%20%2B%20CDP-40B5A4?style=flat-square&logo=puppeteer&logoColor=white)](https://pptr.dev)
 [![SQLite](https://img.shields.io/badge/storage-SQLite%20WAL-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](./DOCKER.md)
-[![Dataset](https://img.shields.io/badge/dataset-639k%20rounds-8b5cf6?style=flat-square)](#public-dataset)
+[![Dataset](https://img.shields.io/badge/dataset-929k%20rounds-8b5cf6?style=flat-square)](#public-dataset)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](./LICENSE)
 
 [Features](#features) • [Getting started](#getting-started) • [Configuration](#configuration) • [Dashboards](#dashboards) • [Public dataset](#public-dataset) • [API](#api) • [How it works](#how-it-works) • [Deployment](#deployment)
 
@@ -22,14 +23,14 @@ Crash Monitor opens each site's Crash page in a headless browser, reads the live
 
 Every site is fully independent, with its own browser, database, streak counters and stall watchdog, so one site going down never disturbs the others' archives.
 
-The monthly exports are committed to this repository, which makes it an open [dataset](#public-dataset) of 639,000+ rounds as well as a tool.
+The monthly exports are committed to this repository, which makes it an open [dataset](#public-dataset) of 929,000+ rounds as well as a tool. Both are free to use and modify under the [Apache License 2.0](#license-and-attribution), with credit to the original work.
 
 > [!NOTE]
 > This tool is **read-only**. It observes public crash feeds without placing bets, clicking, or otherwise interacting with the pages. It is intended for statistical analysis, research and learning.
 
 ## Features
 
-- **Four sites, one process**: each site runs in its own browser and writes to its own database. Adding a fifth is [one entry in `lib/sites.js`](#adding-a-site).
+- **Four sites, one process**: each site runs in its own browser and writes to its own database. Track all of them or [pick the ones you want](#choosing-which-sites-to-track) with one setting. Adding a fifth is [one entry in `lib/sites.js`](#adding-a-site).
 - **Network-level capture**: Puppeteer and CDP (`Network.webSocketFrameReceived`) tap each feed directly, and four different wire formats are normalized to one event shape.
 - **SQLite persistence**: every round is stored through `better-sqlite3` in WAL mode, with an indexed millisecond timestamp for fast time-window queries.
 - **Live dashboard**: multiplier ticker, streak counters, result feed, distribution histogram, a cold / regular / hot temperature gauge and a cold streak watch.
@@ -45,8 +46,8 @@ The monthly exports are committed to this repository, which makes it an open [da
 |---|---|---|---|---|---|
 | **Stake.com** | GraphQL subscription (JSON) | Full float | UUID | `crash_results.db` | [`db-archives/`](./db-archives) |
 | **Shuffle.com** | GraphQL subscription (JSON) | 2 decimals | Integer | `shuffle_crash_results.db` | [`db-archives-shuffle/`](./db-archives-shuffle) |
-| **Roobet.com** | Socket.IO, packed binary | 2 decimals (integer hundredths) | Mongo ObjectId | `roobet_crash_results.db` | `db-archives-roobet/` |
-| **Goated.com** | JSON on a dedicated socket | Full float | Integer | `goated_crash_results.db` | `db-archives-goated/` |
+| **Roobet.com** | Socket.IO, packed binary | 2 decimals (integer hundredths) | Mongo ObjectId | `roobet_crash_results.db` | [`db-archives-roobet/`](./db-archives-roobet) |
+| **Goated.com** | JSON on a dedicated socket | Full float | Integer | `goated_crash_results.db` | [`db-archives-goated/`](./db-archives-goated) |
 
 ## Getting started
 
@@ -54,7 +55,7 @@ The monthly exports are committed to this repository, which makes it an open [da
 
 - **Node.js 22.12+** (the floor set by Puppeteer 25, declared in `engines`)
 - A Chromium that can launch. Puppeteer downloads its own; on Linux a few shared libraries may be missing (see [Troubleshooting](#troubleshooting))
-- About **2 GB of RAM** with all four sites enabled, since each one runs its own headless Chromium
+- About **2 GB of RAM** with all four sites tracked, since each one runs its own headless Chromium. [Tracking fewer sites](#choosing-which-sites-to-track) costs about 500 MB each
 
 Or just **Docker**, if you would rather install nothing else.
 
@@ -73,6 +74,8 @@ Then open:
 - <http://localhost:3000> for the live dashboard
 - <http://localhost:3000/analytics.html> for the analytics dashboard
 
+Each tab starts filling once its page has loaded and the first round ends. All four sites are tracked by default; set `SITES` in `.env` to [track only some of them](#choosing-which-sites-to-track).
+
 > [!TIP]
 > There is no build step, test suite or linter. `node capture.js` is the entire runtime.
 
@@ -86,28 +89,54 @@ docker compose logs -f crash-monitor
 
 The image uses Debian's `chromium` package instead of a Chrome download, runs as a non-root user, and keeps the databases on a named volume so they survive rebuilds. Volume migration and container troubleshooting are covered in [`DOCKER.md`](./DOCKER.md).
 
+> [!NOTE]
+> Compose only passes the variables listed under `environment:` in `docker-compose.yml` into the container: the port, `SITES`, the site toggles and the Telegram settings. To tune the watchdog, the browser recycle or the dashboard indicators under Docker, add those variables to that block.
+
 ## Configuration
 
 All configuration is through environment variables. A `.env` file in the project root is loaded automatically, and every variable is optional.
+
+**General**
 
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3000` | HTTP and WebSocket port |
 | `DASHBOARD_ENABLED` | `true` | `false` runs a capture-only daemon: no web server, no WebSocket, no API |
-| `STAKE_ENABLED`<br>`SHUFFLE_ENABLED`<br>`ROOBET_ENABLED`<br>`GOATED_ENABLED` | `true` | `false` skips that site's browser. Its tab keeps serving what is already archived |
+
+**Sites**
+
+| Variable | Default | Description |
+|---|---|---|
+| `SITES` | `all` | Which casinos to track: `all`, `none`, or a list of keys such as `stake,roobet` (see [Choosing which sites to track](#choosing-which-sites-to-track)) |
+| `STAKE_ENABLED`<br>`SHUFFLE_ENABLED`<br>`ROOBET_ENABLED`<br>`GOATED_ENABLED` | `true` | Per-site switch. `false` has the same effect as leaving that site out of `SITES` |
 | `DB_PATH` | `crash_results.db` | Stake's SQLite file |
 | `SHUFFLE_DB_PATH` | `shuffle_crash_results.db` | Shuffle's SQLite file |
 | `ROOBET_DB_PATH` | `roobet_crash_results.db` | Roobet's SQLite file |
 | `GOATED_DB_PATH` | `goated_crash_results.db` | Goated's SQLite file |
-| `TELEGRAM_ENABLED` | `false` | Send critical alerts to Telegram |
+
+**Notifications**
+
+| Variable | Default | Description |
+|---|---|---|
+| `TELEGRAM_ENABLED` | `false` | Send critical alerts to Telegram: instant crashes, 1000x+ rounds and unresolved stalls |
 | `TELEGRAM_BOT_TOKEN` | | Bot token from [@BotFather](https://t.me/BotFather) |
 | `TELEGRAM_CHAT_ID` | | Chat that receives the alerts |
-| `TELEGRAM_SITES` | `all` | Sites allowed to push to Telegram: `all`, `none`, or a list such as `stake,shuffle` |
+| `TELEGRAM_SITES` | `all` | Sites allowed to push to Telegram: `all`, `none`, or a list such as `stake,shuffle`. Console and desktop alerts are unaffected |
 | `DESKTOP_NOTIFICATIONS_ENABLED` | `false` | Native desktop alerts through `node-notifier` |
+
+**Reliability**
+
+| Variable | Default | Description |
+|---|---|---|
 | `WATCHDOG_ENABLED` | `true` | Stall watchdog (see [Reliability](#reliability)) |
 | `WATCHDOG_STALE_MS` | `180000` | Time without a new result before a site counts as stalled |
 | `WATCHDOG_CHECK_MS` | `30000` | How often staleness is checked |
 | `BROWSER_RECYCLE_MS` | `21600000` | Relaunch each site's browser this often (6 h). `0` disables |
+
+**Dashboard indicators**
+
+| Variable | Default | Description |
+|---|---|---|
 | `TEMPERATURE_WINDOW` | `300` | Rounds compared against the all-time baseline by the temperature gauge (minimum 50) |
 | `STREAK_UNDER_X` | `2.2` | Cold streak watch: a run is consecutive rounds that ended under this multiplier |
 | `STREAK_MIN_LEN` | `16` | Cold streak watch: run length that counts as an event (minimum 2) |
@@ -118,6 +147,22 @@ All configuration is through environment variables. A `.env` file in the project
 > [!TIP]
 > To find your `TELEGRAM_CHAT_ID`, message your bot, open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy the `chat.id` field.
 
+### Choosing which sites to track
+
+`SITES` selects the casinos to capture. It defaults to `all`:
+
+```ini
+SITES=all              # every site (default)
+SITES=stake,roobet     # only these two
+SITES=none             # capture nothing, just serve what is already archived
+```
+
+The keys are `stake`, `shuffle`, `roobet` and `goated`, in any order and any case. An unknown key is ignored with a warning in the log, and a `Capturing: stake, roobet` line at startup confirms the selection.
+
+A site that is left out gets no browser and no watchdog. Its tab stays in the dashboards, marked with a red dot, and keeps serving whatever that site has already archived. `/api/sites` and `/api/health` report it with `enabled: false`, and it never counts as stale.
+
+The per-site `*_ENABLED` flags do the same thing one site at a time, and both must allow a site for it to be captured: `SITES=stake,roobet` with `ROOBET_ENABLED=false` tracks Stake only.
+
 ## Dashboards
 
 Both pages share a **Stake.com / Shuffle.com / Roobet.com / Goated.com** tab bar. The selected site is mirrored into `?site=` and remembered locally, so it survives a reload, follows you between the two pages, and can be shared as a link (`/?site=roobet`). Every site streams over one WebSocket, so switching tabs is instant and background tabs keep updating.
@@ -127,7 +172,7 @@ Both pages share a **Stake.com / Shuffle.com / Roobet.com / Goated.com** tab bar
 - Live multiplier with `PREPARING` / `STARTING` / `CRASHING...` / `CRASHED` states
 - Average, median and max over the last 1000 rounds
 - Streak counters: rounds since the last `< 1.01x`, the last `1000x+`, and the last back-to-back `< 1.01x`
-- Distribution histogram and a colour-coded feed of recent results, with optional sound alerts
+- Distribution histogram and a colour-coded feed of recent results, with optional sound alerts for instant crashes, 100x+ and 1000x+ rounds
 - **Temperature gauge**: labels the current stretch `COLD`, `REGULAR` or `HOT`. It takes the last `TEMPERATURE_WINDOW` rounds (about two hours), measures the share that ended under 2x, and scores it as a z-score against that site's own all-time share. Past ±2σ the label flips to `COLD` (more early crashes than usual) or `HOT` (fewer).
 - **Cold streak watch**: the current run of rounds under `STREAK_UNDER_X`, the site's record, how many runs of `STREAK_MIN_LEN` or more the archive holds, and the odds of one starting in the next hour, day or week.
 
@@ -164,7 +209,22 @@ Multipliers are **truncated** to two decimals for display, matching Stake's own 
 
 The `.db` files are gitignored, but the monthly archives are committed. Clone or fork the repository and you get every archived round without running the capture yourself.
 
-**Stake**, in [`db-archives/`](./db-archives), from `2026-01-16`:
+| Site | Archive | Since | Rounds | Mean | Max | Instant crash % |
+|---|---|---|---:|---:|---:|---:|
+| **Stake** | [`db-archives/`](./db-archives) | `2026-01-16` | 680,423 | 13.47x | 399,026x | 1.96 % |
+| **Shuffle** | [`db-archives-shuffle/`](./db-archives-shuffle) | `2026-08-15` | 142,315 | 16.07x | 763,927x | 1.99 % |
+| **Roobet** | [`db-archives-roobet/`](./db-archives-roobet) | `2026-09-01` | 105,583 | 166.48x | 16,487,036x | 4.95 % |
+| **Goated** | [`db-archives-goated/`](./db-archives-goated) | `2026-09-30` | 1,420 | 41.68x | 45,722x | 1.76 % |
+| **Total** | | | **929,741** | | | |
+
+Figures are as of the September 2026 dump. A mean is dominated by a handful of extreme rounds, so compare sites on the median (close to 2x everywhere) rather than on it. Roobet's mean is the clearest case: one 16.5-million-x round accounts for most of it.
+
+<details>
+<summary><b>Month by month</b></summary>
+
+<br>
+
+**Stake**
 
 | Month | Rounds | Days with data | Mean | Median | Max | Instant crash % |
 |---|---:|---:|---:|---:|---:|---:|
@@ -176,17 +236,30 @@ The `.db` files are gitignored, but the monthly archives are committed. Clone or
 | `2026-06` | 91,544 | 30 | 17.06x | 1.99x | 399,026x | 1.97 % |
 | `2026-07` | 93,854 | 31 | 13.74x | 1.99x | 116,772x | 2.07 % |
 | `2026-08` | 88,325 | 30 | 14.37x | 1.97x | 396,866x | 1.94 % |
-| **Total** | **588,303** | | **13.40x** | | **399,026x** | **1.95 %** |
+| `2026-09` | 92,120 | 30 | 13.89x | 1.97x | 144,332x | 1.99 % |
 
-**Shuffle**, in [`db-archives-shuffle/`](./db-archives-shuffle), from `2026-08-15`:
+**Shuffle**
 
 | Month | Rounds | Days with data | Mean | Median | Max | Instant crash % |
 |---|---:|---:|---:|---:|---:|---:|
 | `2026-08` | 50,789 | 17 | 11.43x | 1.97x | 25,956x | 2.06 % |
+| `2026-09` | 91,526 | 30 | 18.65x | 1.97x | 763,927x | 1.94 % |
 
-**Roobet** (captured since `2026-09-01`) and **Goated** (since `2026-09-30`) get their `db-archives-roobet/` and `db-archives-goated/` directories with their first monthly dump.
+**Roobet**
 
-The archive is about 77 MB of CSV. Gaps within a month are capture downtime, not missing rounds in the game itself. Each summary's `coverage.largestGapSeconds` and `resultsPerDay` show where they are.
+| Month | Rounds | Days with data | Mean | Median | Max | Instant crash % |
+|---|---:|---:|---:|---:|---:|---:|
+| `2026-09` | 105,583 | 30 | 166.48x | 1.90x | 16,487,036x | 4.95 % |
+
+**Goated**
+
+| Month | Rounds | Days with data | Mean | Median | Max | Instant crash % |
+|---|---:|---:|---:|---:|---:|---:|
+| `2026-09` | 1,420 | 1 | 41.68x | 2.08x | 45,722x | 1.76 % |
+
+</details>
+
+The archive is about 107 MB of CSV. Gaps within a month are capture downtime, not missing rounds in the game itself. Each summary's `coverage.largestGapSeconds` and `resultsPerDay` show where they are.
 
 ### Getting the data
 
@@ -197,7 +270,8 @@ git clone --depth 1 https://github.com/sebbourgeois/stake-crash-archives.git
 # Archives only, without the app
 git clone --depth 1 --filter=blob:none --sparse \
   https://github.com/sebbourgeois/stake-crash-archives.git
-cd stake-crash-archives && git sparse-checkout set db-archives db-archives-shuffle
+cd stake-crash-archives
+git sparse-checkout set db-archives db-archives-shuffle db-archives-roobet db-archives-goated
 
 # A single month, straight over HTTP
 curl -O https://raw.githubusercontent.com/sebbourgeois/stake-crash-archives/master/db-archives/crash_2026-07.csv
@@ -205,14 +279,16 @@ curl -O https://raw.githubusercontent.com/sebbourgeois/stake-crash-archives/mast
 
 ### What's in it
 
+Every site's directory has the same layout:
+
 | File | Contents |
 |---|---|
 | `crash_YYYY-MM.csv` | One row per round: `gameId`, `multiplier`, `timestamp`, `ts_ms`, `iso_utc`, `gamesSinceLast1x`, `gamesSinceLast1000x`, `gamesSinceDouble1x` |
-| `crash_YYYY-MM.summary.json` | Stats for that month: count, min, mean, median, p25 to p99, max, tier distribution, cumulative counts at ≥ 1.01 / 2 / 5 / 10 / 50 / 100 / 1000x, rounds per day, coverage |
+| `crash_YYYY-MM.summary.json` | Stats for that month: count, min, mean, median, p25 to p99, max, tier distribution, cumulative counts at ≥ 1.01 / 2 / 5 / 10 / 50 / 100 / 1000x, rounds per day, coverage, top multipliers |
 | `index.csv` | One line per month |
 | `summary.json` | Every month's summary plus `totalRows` |
 
-`timestamp` is stored as the site sent it, which for Stake is an HTTP-style date string. Use `ts_ms` (epoch milliseconds) or `iso_utc` for anything that sorts or parses.
+`timestamp` is stored as the site sent it, which for Stake is an HTTP-style date string (`Tue, 01 Sep 2026 00:00:12 GMT`). Use `ts_ms` (epoch milliseconds) or `iso_utc` for anything that sorts or parses. `gameId` is unique within one site only.
 
 ```python
 import pandas as pd
@@ -222,7 +298,7 @@ print(df.multiplier.describe(), (df.multiplier < 1.01).mean())
 ```
 
 > [!NOTE]
-> The archive is provided as-is for research and learning. Past rounds say nothing about future ones, and this dataset is not a betting strategy.
+> The archive is provided as-is for research and learning. Past rounds say nothing about future ones, and this dataset is not a betting strategy. Reuse is covered by the same terms as the code: see [License and attribution](#license-and-attribution).
 
 ## Monthly archives
 
@@ -266,30 +342,6 @@ git add db-archives*/ && git commit -m "Archive $(date -u -d 'last month' +%Y-%m
 > [!IMPORTANT]
 > The script needs a Node that can load the compiled `better-sqlite3` binding. It tries `$NODE_BIN`, then `PATH`, then any nvm-installed versions, and uses the first that works. If none do, run `npm rebuild better-sqlite3` or set `NODE_BIN=/path/to/node`.
 
-## Reliability
-
-### Stall watchdog
-
-A capture can stall silently: the process stays alive and the event loop keeps running, but a site stops delivering WebSocket frames. Nothing throws, so neither the retry loop nor the supervisor notices. This repository's own Stake database has a 7.8 h gap and a 54 h gap that both happened inside a single long-lived process.
-
-"No row written for `WATCHDOG_STALE_MS`" is therefore the liveness signal, and each site is watched separately:
-
-1. **Relaunch that site's browser** in-process, then give it one more full window.
-2. If that window also passes with no result:
-   - **every enabled site is stale**: the process is wedged, so it exits with status 1 and the supervisor (`Restart=always` under systemd, `restart: unless-stopped` under Compose) starts it fresh.
-   - **another site is still healthy**: only the stalled site keeps relaunching. Restarting the process would punch a hole in the healthy site's archive to fix a problem it does not have.
-
-Step 1 is routine self-healing and only logs. Step 2 sends a Telegram alert, repeated about once an hour while the outage lasts.
-
-> [!NOTE]
-> The default threshold comes from 90 days of Stake data: gaps over 3 min happened 57 times, over 5 min 12 times, over 6 min 7 times, and every gap past 6 min was a real outage. The default therefore triggers a cheap browser relaunch every other day or so and restarts the service only when it matters. Raise `WATCHDOG_STALE_MS` to `300000` for fewer relaunches.
-
-### Browser recycling and CPU
-
-The crash pages are single-page apps that leak memory while left open: a Stake renderer measured 2.1 GB after four days and a Roobet one 9.2 GB after 24 hours. Each site's browser is therefore relaunched every `BROWSER_RECYCLE_MS`, and never mid-round: the relaunch waits for the next persisted crash, with a two-minute grace period if none arrives. As a backstop, a renderer that outgrows a 1 GB V8 heap is killed and relaunched by the retry loop.
-
-Once the listener is attached, the crash page is parked behind a blank foreground tab. That pauses the page's 60 fps canvas animation, which was costing about a CPU core per site, while frames keep arriving at the network layer.
-
 ## API
 
 The monitor exposes a small HTTP and WebSocket surface, used by the bundled dashboards. Everything is scoped by a site key: `stake`, `shuffle`, `roobet` or `goated`.
@@ -297,7 +349,7 @@ The monitor exposes a small HTTP and WebSocket surface, used by the bundled dash
 | Endpoint | Description |
 |---|---|
 | `GET /api/sites` | `[{ key, label, tab, url, enabled }]`, the source of the tab bar |
-| `GET /api/analytics?site=<key>&period=<period>` | Aggregates for one site over `1h`, `3h`, `12h`, `1d`, `1w`, `1m`, `3m`, `6m` or `all`. `site` defaults to `stake`; an unknown site returns `400` |
+| `GET /api/analytics?site=<key>&period=<period>` | Aggregates for one site over `1h`, `3h`, `12h`, `1d`, `1w`, `1m`, `3m`, `6m` or `all`. `site` defaults to `stake` and `period` to `all`; an unknown site returns `400` |
 | `GET /api/health` | `200` while every enabled site is fresh, `503` once any of them passes its staleness window |
 | `ws://<host>:<port>/` | Live stream for every site. Each message carries its `site` |
 
@@ -327,7 +379,7 @@ There are three message shapes, all JSON:
 // 1. On connect, one per site: the last 1000 results and the current indicators
 { "type": "history", "site": "shuffle", "results": [ ... ], "streaks": { ... }, "temperature": { ... }, "streakOdds": { ... } }
 
-// 2. Live state, on every frame (starting / start / in_progress / crash)
+// 2. Live state, once per site on connect and then on every frame (starting / start / in_progress / crash)
 { "type": "live", "site": "stake", "state": { "status": "in_progress", "multiplier": 1.42, "gameId": "..." } }
 
 // 3. A persisted round, with both indicators recomputed to include it
@@ -412,7 +464,31 @@ Because `gameId` is the primary key, reconnects and restarts never produce dupli
 
 ### Adding a site
 
-Add an entry to `SITES` in `lib/sites.js` (page URL, env var names and a `parseFrame()` that returns the normalized event), plus a row in the site tables at the top of `dump-monthly.sh`. Nothing else: `capture.js` iterates `SITES`, and both dashboards build their tabs from `GET /api/sites`.
+Add an entry to `SITES` in `lib/sites.js` (page URL, env var names and a `parseFrame()` that returns the normalized event), plus a row in the site tables at the top of `dump-monthly.sh`. Nothing else: `capture.js` iterates `SITES`, both dashboards build their tabs from `GET /api/sites`, and the new entry's key becomes a valid value for the `SITES` and `TELEGRAM_SITES` settings.
+
+## Reliability
+
+### Stall watchdog
+
+A capture can stall silently: the process stays alive and the event loop keeps running, but a site stops delivering WebSocket frames. Nothing throws, so neither the retry loop nor the supervisor notices. This repository's own Stake database has a 7.8 h gap and a 54 h gap that both happened inside a single long-lived process.
+
+"No row written for `WATCHDOG_STALE_MS`" is therefore the liveness signal, and each site is watched separately:
+
+1. **Relaunch that site's browser** in-process, then give it one more full window.
+2. If that window also passes with no result:
+   - **every enabled site is stale**: the process is wedged, so it exits with status 1 and the supervisor (`Restart=always` under systemd, `restart: unless-stopped` under Compose) starts it fresh.
+   - **another site is still healthy**: only the stalled site keeps relaunching. Restarting the process would punch a hole in the healthy site's archive to fix a problem it does not have.
+
+Step 1 is routine self-healing and only logs. Step 2 sends a Telegram alert, repeated about once an hour while the outage lasts.
+
+> [!NOTE]
+> The default threshold comes from 90 days of Stake data: gaps over 3 min happened 57 times, over 5 min 12 times, over 6 min 7 times, and every gap past 6 min was a real outage. The default therefore triggers a cheap browser relaunch every other day or so and restarts the service only when it matters. Raise `WATCHDOG_STALE_MS` to `300000` for fewer relaunches.
+
+### Browser recycling and CPU
+
+The crash pages are single-page apps that leak memory while left open: a Stake renderer measured 2.1 GB after four days and a Roobet one 9.2 GB after 24 hours. Each site's browser is therefore relaunched every `BROWSER_RECYCLE_MS`, and never mid-round: the relaunch waits for the next persisted crash, with a two-minute grace period if none arrives. As a backstop, a renderer that outgrows a 1 GB V8 heap is killed and relaunched by the retry loop.
+
+Once the listener is attached, the crash page is parked behind a blank foreground tab. That pauses the page's 60 fps canvas animation, which was costing about a CPU core per site, while frames keep arriving at the network layer. Shuffle's client refuses to reconnect its socket while it believes it is hidden, so that one page is additionally told it is visible; the tab stays parked and the saving stays.
 
 ## Deployment
 
@@ -450,9 +526,26 @@ sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 
 
 **The dashboard shows "Disconnected".** The WebSocket client reconnects on its own. If it stays disconnected, the server is down; check its logs.
 
-**One site's tab is empty or stuck.** Check `/api/health`: `sites.shuffle.staleSeconds` climbing past `thresholdSeconds` while the others stay low means only that capture is down. Logs are prefixed per site (`[SHUFFLE] Capture error: ...`), and a failed capture retries after 10 seconds.
+**One site's tab is empty or stuck.** A red dot on the tab means the site is not being captured: it is missing from `SITES` or its `*_ENABLED` flag is `false`. Otherwise check `/api/health`: `sites.shuffle.staleSeconds` climbing past `thresholdSeconds` while the others stay low means only that capture is down. Logs are prefixed per site (`[SHUFFLE] Capture error: ...`), and a failed capture retries after 10 seconds.
+
+**The temperature gauge or the cold streak watch shows `--`.** The site does not have enough history yet: the gauge needs twice `TEMPERATURE_WINDOW` rounds (four to five hours by default) and the streak watch needs 1000 (about eight hours).
 
 **`dump-monthly.sh` cannot load `better-sqlite3`.** The native module is built for one Node ABI and the `node` on your `PATH` may be another. Run `npm rebuild better-sqlite3`, or point the script at a known-good binary with `NODE_BIN=/path/to/node ./dump-monthly.sh`.
 
 > [!CAUTION]
 > These sites rate-limit automated clients. Running several instances from the same IP is likely to get the session blocked.
+
+## License and attribution
+
+Crash Monitor, code and archives alike, is released under the [Apache License 2.0](./LICENSE). You may use, modify and redistribute it, commercially or not, provided that whatever you distribute:
+
+- keeps the copyright notice and the [`NOTICE`](./NOTICE) file, which credit Sébastien Bourgeois and this repository as the original work;
+- states which files you changed;
+- includes a copy of the license.
+
+Beyond what the license requires, a visible link back is appreciated if you publish a fork or build on the dataset:
+
+```text
+Based on Crash Monitor by Sébastien Bourgeois
+https://github.com/sebbourgeois/stake-crash-archives
+```

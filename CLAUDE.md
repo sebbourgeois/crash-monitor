@@ -41,7 +41,8 @@ There is no test suite, linter, or build step — `capture.js` runs directly und
 | `SHUFFLE_DB_PATH` | `shuffle_crash_results.db` | Shuffle's SQLite file — never point two sites at one file |
 | `ROOBET_DB_PATH` | `roobet_crash_results.db` | Roobet's SQLite file |
 | `GOATED_DB_PATH` | `goated_crash_results.db` | Goated's SQLite file |
-| `STAKE_ENABLED` / `SHUFFLE_ENABLED` / `ROOBET_ENABLED` / `GOATED_ENABLED` | `true` | `false` skips that site's browser; its archive is still served |
+| `SITES` | `all` | Which sites are captured: `all`, `none`, or `stake,roobet`. Parsed by the same `parseSiteFilter()` as `TELEGRAM_SITES`; a site left out behaves exactly like `*_ENABLED=false` |
+| `STAKE_ENABLED` / `SHUFFLE_ENABLED` / `ROOBET_ENABLED` / `GOATED_ENABLED` | `true` | `false` skips that site's browser; its archive is still served. ANDed with `SITES` |
 | `DASHBOARD_ENABLED` | `true` | Set to `false` for capture-only daemon (skips Express + WS server) |
 | `TELEGRAM_ENABLED` | `false` | Only critical events (instant crash, 1000x+) are sent |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | Required when Telegram is on |

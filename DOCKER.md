@@ -44,7 +44,8 @@ Environment variables are read from your shell or a `.env` file in the project r
 | `DB_PATH` | `/data/crash_results.db` | Don't override unless you also change the volume mount |
 | `SHUFFLE_DB_PATH` | `/data/shuffle_crash_results.db` | Same; must never equal `DB_PATH` |
 | `ROOBET_DB_PATH` | `/data/roobet_crash_results.db` | Same; again its own file |
-| `STAKE_ENABLED` / `SHUFFLE_ENABLED` / `ROOBET_ENABLED` | `true` | Set to `false` to skip that site's browser |
+| `SITES` | `all` | Which casinos to track: `all`, `none`, or `stake,roobet` |
+| `STAKE_ENABLED` / `SHUFFLE_ENABLED` / `ROOBET_ENABLED` / `GOATED_ENABLED` | `true` | Set to `false` to skip that site's browser |
 
 ## Migrating the existing DB to the volume
 
