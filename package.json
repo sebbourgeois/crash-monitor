@@ -2,6 +2,8 @@
   "name": "crash-monitor",
   "version": "1.1.0",
   "description": "Monitor Stake.com, Shuffle.com, Roobet.com and Goated.com crash game results via WebSocket",
+  "license": "Apache-2.0",
+  "author": "Sébastien Bourgeois",
   "main": "capture.js",
   "scripts": {
     "start": "node capture.js"

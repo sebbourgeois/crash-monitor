@@ -19,9 +19,8 @@ const DESKTOP_NOTIFICATIONS_ENABLED = process.env.DESKTOP_NOTIFICATIONS_ENABLED 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-// Which sites may reach Telegram: "all" (default), "none", or a comma-separated
-// list of site keys ("stake,shuffle"). Console and desktop notifications are
-// unaffected — this only narrows the one channel that pushes to a phone.
+// A site list from the environment: "all" (default), "none", or a
+// comma-separated list of site keys ("stake,shuffle").
 function parseSiteFilter(raw, varName) {
   const value = String(raw ?? 'all').trim().toLowerCase();
   if (value === '' || value === 'all') return new Set(Object.keys(SITES));
@@ -34,6 +33,12 @@ function parseSiteFilter(raw, varName) {
   return new Set(keys.filter(k => SITES[k]));
 }
 
+// Which sites are captured. A site left out behaves exactly like one with its
+// own *_ENABLED flag set to false: no browser, archive still served.
+const CAPTURE_SITES = parseSiteFilter(process.env.SITES, 'SITES');
+
+// Which sites may reach Telegram. Console and desktop notifications are
+// unaffected — this only narrows the one channel that pushes to a phone.
 const TELEGRAM_SITES = parseSiteFilter(process.env.TELEGRAM_SITES, 'TELEGRAM_SITES');
 
 // Watchdog. A capture stalls silently: the process stays alive and the event
@@ -168,7 +173,7 @@ const monitors = Object.values(SITES).map((site) => {
   return createMonitor({
     site,
     store,
-    enabled: process.env[site.enabledEnv] !== 'false',
+    enabled: CAPTURE_SITES.has(site.key) && process.env[site.enabledEnv] !== 'false',
     watchdog: WATCHDOG,
     recycleMs: BROWSER_RECYCLE_MS,
     broadcast: (msg) => broadcast({ ...msg, site: site.key }),
@@ -286,6 +291,7 @@ process.on('unhandledRejection', (err) => {
 });
 
 setupServer();
+console.log(`Capturing: ${monitors.filter(m => m.enabled).map(m => m.site.key).join(', ') || 'no sites'}`);
 if (TELEGRAM_ENABLED) {
   const listed = [...TELEGRAM_SITES].join(', ');
   console.log(`Telegram alerts: ${TELEGRAM_SITES.size ? listed : 'no sites (TELEGRAM_SITES=none)'}`);
