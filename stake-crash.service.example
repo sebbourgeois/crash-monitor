@@ -17,7 +17,7 @@
 # same Node on PATH that you ran `npm install` with. Or just edit the file by hand:
 #
 #   __USER__    the unprivileged user that owns the checkout   (e.g. deploy)
-#   __WORKDIR__ absolute path to the repo checkout             (e.g. /opt/stake-crash-archives)
+#   __WORKDIR__ absolute path to the repo checkout             (e.g. /opt/crash-monitor)
 #   __NODE__    absolute path to the node binary               (e.g. /usr/bin/node)
 #
 # Do not run this as root: Chromium refuses to start as root without --no-sandbox,
