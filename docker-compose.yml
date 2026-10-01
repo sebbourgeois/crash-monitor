@@ -12,6 +12,7 @@ services:
       SHUFFLE_DB_PATH: /data/shuffle_crash_results.db
       ROOBET_DB_PATH: /data/roobet_crash_results.db
       GOATED_DB_PATH: /data/goated_crash_results.db
+      SITES: ${SITES:-all}
       STAKE_ENABLED: ${STAKE_ENABLED:-true}
       SHUFFLE_ENABLED: ${SHUFFLE_ENABLED:-true}
       ROOBET_ENABLED: ${ROOBET_ENABLED:-true}
