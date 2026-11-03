@@ -8,10 +8,10 @@
 [![Puppeteer](https://img.shields.io/badge/capture-Puppeteer%20%2B%20CDP-40B5A4?style=flat-square&logo=puppeteer&logoColor=white)](https://pptr.dev)
 [![SQLite](https://img.shields.io/badge/storage-SQLite%20WAL-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white)](./DOCKER.md)
-[![Dataset](https://img.shields.io/badge/dataset-929k%20rounds-8b5cf6?style=flat-square)](#public-dataset)
+[![Dataset](https://img.shields.io/badge/dataset-1.33M%20rounds-8b5cf6?style=flat-square)](#public-dataset)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](./LICENSE)
 
-[Features](#features) • [Getting started](#getting-started) • [Configuration](#configuration) • [Dashboards](#dashboards) • [Public dataset](#public-dataset) • [API](#api) • [How it works](#how-it-works) • [Deployment](#deployment)
+[Features](#features) • [Getting started](#getting-started) • [Configuration](#configuration) • [Dashboards](#dashboards) • [Public dataset](#public-dataset) • [Monthly archives](#monthly-archives) • [API](#api) • [How it works](#how-it-works) • [Reliability](#reliability) • [Deployment](#deployment) • [Troubleshooting](#troubleshooting)
 
 <img src="./docs/live.png" alt="Live dashboard: site tabs, the running multiplier, the temperature gauge, the cold streak watch and the recent results feed" width="900" />
 
@@ -23,7 +23,7 @@ Crash Monitor opens each site's Crash page in a headless browser, reads the live
 
 Every site is fully independent, with its own browser, database, streak counters and stall watchdog, so one site going down never disturbs the others' archives.
 
-The monthly exports are committed to this repository, which makes it an open [dataset](#public-dataset) of 929,000+ rounds as well as a tool. Both are free to use and modify under the [Apache License 2.0](#license-and-attribution), with credit to the original work.
+The monthly exports are committed to this repository, which makes it an open [dataset](#public-dataset) of 1.3 million rounds as well as a tool.
 
 > [!NOTE]
 > This tool is **read-only**. It observes public crash feeds without placing bets, clicking, or otherwise interacting with the pages. It is intended for statistical analysis, research and learning.
@@ -37,7 +37,7 @@ The monthly exports are committed to this repository, which makes it an open [da
 - **Analytics dashboard**: volume, mean, percentiles, distribution, rare-event gaps and top multipliers over any window from `1h` to `all`.
 - **Monthly archives**: `dump-monthly.sh` exports per-month CSV and JSON stats for every site, ready for cron.
 - **Notifications**: console, Telegram and desktop alerts for instant crashes (`< 1.01x`) and 1000x+ rounds, labelled by site.
-- **Built to run unattended**: per-site browser relaunch, a [stall watchdog](#reliability) for silent feed outages, scheduled browser recycling, and `/api/health` for external probes.
+- **Built to run unattended**: per-site browser relaunch, a [stall watchdog](#stall-watchdog) for silent feed outages, scheduled browser recycling, and `/api/health` for external probes.
 - **Deployable**: ships with a systemd unit template and a Docker Compose setup with a persistent volume.
 
 ### Supported sites
@@ -211,13 +211,13 @@ The `.db` files are gitignored, but the monthly archives are committed. Clone or
 
 | Site | Archive | Since | Rounds | Mean | Max | Instant crash % |
 |---|---|---|---:|---:|---:|---:|
-| **Stake** | [`db-archives/`](./db-archives) | `2026-01-16` | 680,423 | 13.47x | 399,026x | 1.96 % |
-| **Shuffle** | [`db-archives-shuffle/`](./db-archives-shuffle) | `2026-08-15` | 142,315 | 16.07x | 763,927x | 1.99 % |
-| **Roobet** | [`db-archives-roobet/`](./db-archives-roobet) | `2026-09-01` | 105,583 | 166.48x | 16,487,036x | 4.95 % |
-| **Goated** | [`db-archives-goated/`](./db-archives-goated) | `2026-09-30` | 1,420 | 41.68x | 45,722x | 1.76 % |
-| **Total** | | | **929,741** | | | |
+| **Stake** | [`db-archives/`](./db-archives) | `2026-01-16` | 775,182 | 13.71x | 399,026x | 1.95 % |
+| **Shuffle** | [`db-archives-shuffle/`](./db-archives-shuffle) | `2026-08-15` | 238,968 | 15.04x | 763,927x | 2.00 % |
+| **Roobet** | [`db-archives-roobet/`](./db-archives-roobet) | `2026-09-01` | 216,324 | 86.08x | 16,487,036x | 4.91 % |
+| **Goated** | [`db-archives-goated/`](./db-archives-goated) | `2026-09-30` | 103,611 | 11.37x | 45,722x | 1.99 % |
+| **Total** | | | **1,334,085** | | | |
 
-Figures are as of the September 2026 dump. A mean is dominated by a handful of extreme rounds, so compare sites on the median (close to 2x everywhere) rather than on it. Roobet's mean is the clearest case: one 16.5-million-x round accounts for most of it.
+Figures are as of the October 2026 dump. A mean is dominated by a handful of extreme rounds, so compare sites on the median (close to 2x everywhere) rather than on it. Roobet's mean is the clearest case: one 16.5-million-x round in September 2026 accounts for most of it, and the following month's mean was 9.43x.
 
 <details>
 <summary><b>Month by month</b></summary>
@@ -237,6 +237,7 @@ Figures are as of the September 2026 dump. A mean is dominated by a handful of e
 | `2026-07` | 93,854 | 31 | 13.74x | 1.99x | 116,772x | 2.07 % |
 | `2026-08` | 88,325 | 30 | 14.37x | 1.97x | 396,866x | 1.94 % |
 | `2026-09` | 92,120 | 30 | 13.89x | 1.97x | 144,332x | 1.99 % |
+| `2026-10` | 94,759 | 31 | 15.45x | 1.97x | 303,045x | 1.94 % |
 
 **Shuffle**
 
@@ -244,22 +245,25 @@ Figures are as of the September 2026 dump. A mean is dominated by a handful of e
 |---|---:|---:|---:|---:|---:|---:|
 | `2026-08` | 50,789 | 17 | 11.43x | 1.97x | 25,956x | 2.06 % |
 | `2026-09` | 91,526 | 30 | 18.65x | 1.97x | 763,927x | 1.94 % |
+| `2026-10` | 96,653 | 31 | 13.51x | 1.97x | 99,899x | 2.02 % |
 
 **Roobet**
 
 | Month | Rounds | Days with data | Mean | Median | Max | Instant crash % |
 |---|---:|---:|---:|---:|---:|---:|
 | `2026-09` | 105,583 | 30 | 166.48x | 1.90x | 16,487,036x | 4.95 % |
+| `2026-10` | 110,741 | 31 | 9.43x | 1.90x | 67,630x | 4.88 % |
 
 **Goated**
 
 | Month | Rounds | Days with data | Mean | Median | Max | Instant crash % |
 |---|---:|---:|---:|---:|---:|---:|
 | `2026-09` | 1,420 | 1 | 41.68x | 2.08x | 45,722x | 1.76 % |
+| `2026-10` | 102,191 | 31 | 10.95x | 1.99x | 39,990x | 2.00 % |
 
 </details>
 
-The archive is about 107 MB of CSV. Gaps within a month are capture downtime, not missing rounds in the game itself. Each summary's `coverage.largestGapSeconds` and `resultsPerDay` show where they are.
+The archive is about 150 MB of CSV. Gaps within a month are capture downtime, not missing rounds in the game itself. Each summary's `coverage.largestGapSeconds` and `resultsPerDay` show where they are.
 
 ### Getting the data
 
@@ -274,7 +278,7 @@ cd crash-monitor
 git sparse-checkout set db-archives db-archives-shuffle db-archives-roobet db-archives-goated
 
 # A single month, straight over HTTP
-curl -O https://raw.githubusercontent.com/sebbourgeois/crash-monitor/master/db-archives/crash_2026-07.csv
+curl -O https://raw.githubusercontent.com/sebbourgeois/crash-monitor/master/db-archives/crash_2026-10.csv
 ```
 
 ### What's in it
@@ -293,12 +297,12 @@ Every site's directory has the same layout:
 ```python
 import pandas as pd
 
-df = pd.read_csv("db-archives/crash_2026-07.csv", parse_dates=["iso_utc"])
+df = pd.read_csv("db-archives/crash_2026-10.csv", parse_dates=["iso_utc"])
 print(df.multiplier.describe(), (df.multiplier < 1.01).mean())
 ```
 
 > [!NOTE]
-> The archive is provided as-is for research and learning. Past rounds say nothing about future ones, and this dataset is not a betting strategy. Reuse is covered by the same terms as the code: see [License and attribution](#license-and-attribution).
+> The archive is provided as-is for research and learning. Past rounds say nothing about future ones, and this dataset is not a betting strategy. Code and archives share the same terms, the [Apache License 2.0](./LICENSE): keep the [`NOTICE`](./NOTICE) file when you redistribute, and a visible link back to this repository is appreciated if you publish a fork or build on the data.
 
 ## Monthly archives
 
@@ -307,7 +311,7 @@ print(df.multiplier.describe(), (df.multiplier < 1.01).mean())
 ```bash
 ./dump-monthly.sh                   # every site that has a database, every month
 ./dump-monthly.sh -s shuffle        # one site
-./dump-monthly.sh -m 2026-07 -z     # one month for every site, gzipped
+./dump-monthly.sh -m 2026-10 -z     # one month for every site, gzipped
 ./dump-monthly.sh -s stake -d other.db -o /mnt/backup
 ```
 
@@ -435,6 +439,8 @@ flowchart LR
 5. Express serves `public/` and the API, and the `ws` server pushes site-tagged updates over the same HTTP server.
 6. Streak counters, the temperature baseline and the streak state are seeded from each database at startup, so they survive restarts.
 
+### Project structure
+
 | File | Role |
 |---|---|
 | `capture.js` | Wiring: builds one monitor per site, serves the API and WebSocket, owns the watchdog ladder, notifications and shutdown |
@@ -443,6 +449,8 @@ flowchart LR
 | `lib/monitor.js` | One site's capture loop: browser, retry, recycle, streaks, dedupe, staleness clock |
 | `public/` | Both dashboards. `site-tabs.js` is shared between them |
 | `dump-monthly.sh`, `dump-last-month.sh` | Monthly archive export and its cron entry point |
+| `db-archives*/` | The committed monthly archives, one directory per site |
+| `stake-crash.service.example`, `Dockerfile`, `docker-compose.yml` | Deployment templates |
 
 ### Data model
 
@@ -534,18 +542,3 @@ sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 
 
 > [!CAUTION]
 > These sites rate-limit automated clients. Running several instances from the same IP is likely to get the session blocked.
-
-## License and attribution
-
-Crash Monitor, code and archives alike, is released under the [Apache License 2.0](./LICENSE). You may use, modify and redistribute it, commercially or not, provided that whatever you distribute:
-
-- keeps the copyright notice and the [`NOTICE`](./NOTICE) file, which credit Sébastien Bourgeois and this repository as the original work;
-- states which files you changed;
-- includes a copy of the license.
-
-Beyond what the license requires, a visible link back is appreciated if you publish a fork or build on the dataset:
-
-```text
-Based on Crash Monitor by Sébastien Bourgeois
-https://github.com/sebbourgeois/crash-monitor
-```
