@@ -62,8 +62,8 @@ Or just **Docker**, if you would rather install nothing else.
 ### Run locally
 
 ```bash
-git clone https://github.com/sebbourgeois/stake-crash-archives.git
-cd stake-crash-archives
+git clone https://github.com/sebbourgeois/crash-monitor.git
+cd crash-monitor
 npm install
 cp .env.example .env       # every variable is optional
 npm start
@@ -265,16 +265,16 @@ The archive is about 107 MB of CSV. Gaps within a month are capture downtime, no
 
 ```bash
 # Everything, without the git history
-git clone --depth 1 https://github.com/sebbourgeois/stake-crash-archives.git
+git clone --depth 1 https://github.com/sebbourgeois/crash-monitor.git
 
 # Archives only, without the app
 git clone --depth 1 --filter=blob:none --sparse \
-  https://github.com/sebbourgeois/stake-crash-archives.git
-cd stake-crash-archives
+  https://github.com/sebbourgeois/crash-monitor.git
+cd crash-monitor
 git sparse-checkout set db-archives db-archives-shuffle db-archives-roobet db-archives-goated
 
 # A single month, straight over HTTP
-curl -O https://raw.githubusercontent.com/sebbourgeois/stake-crash-archives/master/db-archives/crash_2026-07.csv
+curl -O https://raw.githubusercontent.com/sebbourgeois/crash-monitor/master/db-archives/crash_2026-07.csv
 ```
 
 ### What's in it
@@ -327,7 +327,7 @@ Re-running overwrites: previously generated files are removed first, so stale mo
 `dump-last-month.sh` resolves the previous calendar month and passes it to `dump-monthly.sh`. It covers every site that has a database, so one line is enough:
 
 ```cron
-5 0 1 * * /path/to/stake-crash-archives/dump-last-month.sh >> /path/to/stake-crash-archives/dump-monthly.log 2>&1
+5 0 1 * * /path/to/crash-monitor/dump-last-month.sh >> /path/to/crash-monitor/dump-monthly.log 2>&1
 ```
 
 Backfill with `MONTH=2026-03 ./dump-last-month.sh`. Extra flags are passed through, for example `./dump-last-month.sh -z`.
@@ -547,5 +547,5 @@ Beyond what the license requires, a visible link back is appreciated if you publ
 
 ```text
 Based on Crash Monitor by Sébastien Bourgeois
-https://github.com/sebbourgeois/stake-crash-archives
+https://github.com/sebbourgeois/crash-monitor
 ```

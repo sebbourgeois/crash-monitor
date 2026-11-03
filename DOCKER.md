@@ -56,7 +56,7 @@ If you already have data in `./crash_results.db` (plus `-wal` / `-shm`), copy it
 docker compose down
 
 # 1. make sure the named volume exists (compose creates it lazily on `up`)
-docker volume create stake-crash-archives_crash_data
+docker volume create crash-monitor_crash_data
 # (the prefix is your project dir name; check with `docker volume ls`)
 
 # 2. checkpoint WAL into the main DB file so a plain copy is enough
@@ -64,7 +64,7 @@ sqlite3 crash_results.db "PRAGMA wal_checkpoint(TRUNCATE);"
 
 # 3. copy the DB into the volume via a throwaway container
 docker run --rm \
-  -v stake-crash-archives_crash_data:/data \
+  -v crash-monitor_crash_data:/data \
   -v "$(pwd)":/src:ro \
   busybox sh -c "cp /src/crash_results.db /data/crash_results.db && \
                  [ -f /src/crash_results.db-wal ] && cp /src/crash_results.db-wal /data/ || true; \
@@ -77,7 +77,7 @@ docker compose up -d
 
 Notes:
 
-- **Volume name:** Compose names volumes `<project>_<volume>`. The project name defaults to the directory name (`stake-crash-archives`), so the full volume is `stake-crash-archives_crash_data`. Confirm with `docker volume ls`.
+- **Volume name:** Compose names volumes `<project>_<volume>`. The project name defaults to the directory name (`crash-monitor`), so the full volume is `crash-monitor_crash_data`. Confirm with `docker volume ls`.
 - **WAL checkpoint (step 2):** ensures every committed row is in the main `.db` file. Without it you'd need to copy all three files atomically.
 - **Ownership (step 3, `chown`):** the container runs as the non-root `app` user. The throwaway `busybox` step chowns the files so the runtime user can read/write them. The numeric UID may differ on your system — if Node logs `EACCES`, run `docker compose exec crash-monitor id` to find the real UID/GID and re-chown.
 - **Don't run two writers:** never have the host's `capture.js` and the container both pointed at the same DB. Pick one.
@@ -86,10 +86,10 @@ Notes:
 
 ```bash
 # inspect the volume contents
-docker run --rm -v stake-crash-archives_crash_data:/data busybox ls -lh /data
+docker run --rm -v crash-monitor_crash_data:/data busybox ls -lh /data
 
 # open a sqlite shell against the volume
-docker run --rm -it -v stake-crash-archives_crash_data:/data \
+docker run --rm -it -v crash-monitor_crash_data:/data \
   keinos/sqlite3 sqlite3 /data/crash_results.db "SELECT COUNT(*) FROM crash_results;"
 ```
 
